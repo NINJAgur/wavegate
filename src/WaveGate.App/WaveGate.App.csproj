@@ -16,6 +16,7 @@
 
   <ItemGroup>
     <Resource Include="Assets\WaveGate.ico" />
+    <Resource Include="Assets\WaveGate.png" />
   </ItemGroup>
 
   <ItemGroup>
