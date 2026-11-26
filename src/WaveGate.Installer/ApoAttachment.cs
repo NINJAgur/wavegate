@@ -55,35 +55,31 @@ public static class ApoAttachment
         // If FxProperties is missing we must create it, which needs write access on the parent.
         var aclPath = fxExisted ? fxPath : endpointPath;
 
-        if (File.Exists(backupFile))
-        {
-            using var fx = hklm.OpenSubKey(fxPath);
-            if (IsOurs(fx?.GetValue(EfxValue))) return; // already attached
-            throw new InvalidOperationException($"A backup already exists at {backupFile}; detach first.");
-        }
-
-        string? currentEfx;
-        Backup backup;
         using (var fx = hklm.OpenSubKey(fxPath))
         {
-            currentEfx = fx?.GetValue(EfxValue) as string;
-            if (IsOurs(currentEfx)) return;
+            var currentEfx = fx?.GetValue(EfxValue) as string;
+            if (IsOurs(currentEfx)) return; // already attached
 
             if (!string.IsNullOrEmpty(currentEfx) && !replaceExisting)
                 throw new SlotOccupiedException(
                     $"The endpoint effect slot is already used by {currentEfx} (likely a vendor effect). " +
                     "Re-run with --replace to override it; the original is restored on detach.");
 
-            backup = new Backup(
-                DeviceId: deviceId,
-                AclKeyPath: aclPath,
-                OriginalSddl: RegistryOwnership.GetSddl(hklm, aclPath),
-                Values: [Snapshot(fx, EfxValue), Snapshot(fx, DisableSysFxValue)]);
-        }
+            // An existing backup means an earlier attach did not finish. It still holds the
+            // true original state, so keep it rather than snapshotting a half-modified key.
+            if (!File.Exists(backupFile))
+            {
+                var backup = new Backup(
+                    DeviceId: deviceId,
+                    AclKeyPath: aclPath,
+                    OriginalSddl: RegistryOwnership.GetSddl(hklm, aclPath),
+                    Values: [Snapshot(fx, EfxValue), Snapshot(fx, DisableSysFxValue)]);
 
-        // Persist the backup before touching anything so a crash mid-way is recoverable.
-        Directory.CreateDirectory(BackupDir);
-        File.WriteAllText(backupFile, JsonSerializer.Serialize(backup, JsonOptions));
+                // Persist the backup before touching anything so a crash mid-way is recoverable.
+                Directory.CreateDirectory(BackupDir);
+                File.WriteAllText(backupFile, JsonSerializer.Serialize(backup, JsonOptions));
+            }
+        }
 
         RegistryOwnership.EnsureWritable(hklm, aclPath);
 

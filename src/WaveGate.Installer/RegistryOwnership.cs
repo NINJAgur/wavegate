@@ -30,19 +30,22 @@ internal static class RegistryOwnership
 
         Privileges.Enable("SeTakeOwnershipPrivilege", "SeRestorePrivilege");
 
-        using (var key = hklm.OpenSubKey(path, RegistryKeyPermissionCheck.Default, RegistryRights.TakeOwnership)!)
+        // ReadWriteSubTree: with Default, .NET marks the key object read-only and SetAccessControl throws.
+        using (var key = hklm.OpenSubKey(path, RegistryKeyPermissionCheck.ReadWriteSubTree, RegistryRights.TakeOwnership)!)
         {
             var owner = new RegistrySecurity();
             owner.SetOwner(Administrators);
             key.SetAccessControl(owner);
         }
 
-        using (var key = hklm.OpenSubKey(path, RegistryKeyPermissionCheck.Default,
+        using (var key = hklm.OpenSubKey(path, RegistryKeyPermissionCheck.ReadWriteSubTree,
                    RegistryRights.ChangePermissions | RegistryRights.ReadPermissions)!)
         {
             var acl = key.GetAccessControl(OwnerAndDacl);
+            // Inheritable so an FxProperties key we create stays writable for detach;
+            // Restore() re-propagates the original descriptor and strips it again.
             acl.AddAccessRule(new RegistryAccessRule(Administrators, RegistryRights.FullControl,
-                InheritanceFlags.None, PropagationFlags.None, AccessControlType.Allow));
+                InheritanceFlags.ContainerInherit, PropagationFlags.None, AccessControlType.Allow));
             key.SetAccessControl(acl);
         }
         return true;
@@ -53,7 +56,7 @@ internal static class RegistryOwnership
         // Handing ownership back to TrustedInstaller/SYSTEM requires SeRestorePrivilege.
         Privileges.Enable("SeTakeOwnershipPrivilege", "SeRestorePrivilege");
 
-        using var key = hklm.OpenSubKey(path, RegistryKeyPermissionCheck.Default,
+        using var key = hklm.OpenSubKey(path, RegistryKeyPermissionCheck.ReadWriteSubTree,
             RegistryRights.ChangePermissions | RegistryRights.TakeOwnership | RegistryRights.ReadPermissions)
             ?? throw new InvalidOperationException($"Registry key not found: HKLM\\{path}");
 
