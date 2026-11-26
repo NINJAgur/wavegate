@@ -535,9 +535,14 @@ public partial class App : Application, IBoard
 
     public string? MicDeviceId => _config.MicDeviceId;
 
+    // Every attach, switch or detach restarts the Windows audio service, which silences all output for a few seconds.
+    private static bool ConfirmAudioRestart() => MessageBox.Show(
+        "This restarts Windows audio: all sound, including your earphones, stops for a few seconds and then comes back.\n\nContinue?",
+        "WaveGate", MessageBoxButton.YesNo, MessageBoxImage.Information) == MessageBoxResult.Yes;
+
     public async void AttachMic(string deviceId)
     {
-        if (_setupRunning) return;
+        if (_setupRunning || !ConfirmAudioRestart()) return;
         _setupRunning = true;
         try
         {
@@ -570,7 +575,7 @@ public partial class App : Application, IBoard
 
     public async void DetachMic()
     {
-        if (_setupRunning || _config.MicDeviceId is not { } deviceId) return;
+        if (_setupRunning || _config.MicDeviceId is not { } deviceId || !ConfirmAudioRestart()) return;
         _setupRunning = true;
         try
         {
