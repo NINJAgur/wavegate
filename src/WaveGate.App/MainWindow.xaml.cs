@@ -177,7 +177,7 @@ public partial class MainWindow : Window
 
     private const int VisibleClips = 4;
     private const double TileMargin = 4; // 2 on each side
-    private static readonly Size PortraitTile = new(76, 88), LandscapeTile = new(104, 56);
+    private static readonly Size PortraitTile = new(92, 100), LandscapeTile = new(104, 56);
     private Edge _edge = Edge.Right;
 
     public static readonly DependencyProperty TileWidthProperty = DependencyProperty.Register(
