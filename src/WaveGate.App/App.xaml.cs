@@ -522,7 +522,7 @@ public partial class App : Application, IBoard
 
         // Default: top-right of the primary work area, out of the way.
         var work = SystemParameters.WorkArea;
-        window.Left = work.Right - window.Width - 16;
+        window.Left = work.Right - 120; // the overlay sizes to content and snaps to the right edge on show
         window.Top = work.Top + 16;
     }
 

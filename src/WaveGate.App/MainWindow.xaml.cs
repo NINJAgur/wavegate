@@ -30,6 +30,7 @@ public partial class MainWindow : Window
         _view = new ListCollectionView(board.Clips) { Filter = Matches };
         _view.SortDescriptions.Add(new SortDescription(nameof(ClipEntry.Name), ListSortDirection.Ascending));
         ClipList.ItemsSource = _view;
+        ApplyOrientation();
 
         foreach (var clip in board.Clips) clip.PropertyChanged += OnClipChanged;
         board.Clips.CollectionChanged += OnClipsChanged;
@@ -147,7 +148,7 @@ public partial class MainWindow : Window
     {
         if (e.ButtonState != MouseButtonState.Pressed) return;
         DragMove(); // returns when the mouse is released
-        SnapToCorner(animate: true);
+        SnapToEdge(animate: true, pickEdge: true);
     }
 
     // ---- Corner anchoring --------------------------------------------------
@@ -159,16 +160,43 @@ public partial class MainWindow : Window
     protected override void OnContentRendered(EventArgs e)
     {
         base.OnContentRendered(e);
-        SnapToCorner(animate: false);
+        SnapToEdge(animate: false, pickEdge: true);
     }
 
     protected override void OnRenderSizeChanged(SizeChangedInfo info)
     {
         base.OnRenderSizeChanged(info);
-        if (IsLoaded) SnapToCorner(animate: false);
+        if (IsLoaded) SnapToEdge(animate: false);
     }
 
-    public void SnapToCorner(bool animate)
+    private enum Edge { Left, Right, Top, Bottom }
+
+    private const int VisibleClips = 4;
+    private Edge _edge = Edge.Right;
+
+    /// <summary>Side edges get a column of tiles, top/bottom edges a row; about four fit before scrolling.</summary>
+    private void ApplyOrientation()
+    {
+        bool vertical = _edge is Edge.Left or Edge.Right;
+        var panel = new FrameworkElementFactory(typeof(StackPanel));
+        panel.SetValue(StackPanel.OrientationProperty, vertical ? Orientation.Vertical : Orientation.Horizontal);
+        ClipList.ItemsPanel = new ItemsPanelTemplate(panel);
+        Scroller.VerticalScrollBarVisibility = vertical ? ScrollBarVisibility.Hidden : ScrollBarVisibility.Disabled;
+        Scroller.HorizontalScrollBarVisibility = vertical ? ScrollBarVisibility.Disabled : ScrollBarVisibility.Hidden;
+        Scroller.MaxHeight = vertical ? VisibleClips * 44 : double.PositiveInfinity;
+        Scroller.MaxWidth = vertical ? double.PositiveInfinity : VisibleClips * 88;
+        SourceTitle.Visibility = vertical ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    private void OnScrollerWheel(object sender, MouseWheelEventArgs e)
+    {
+        var bar = Scroller.HorizontalScrollBarVisibility == ScrollBarVisibility.Disabled ? 0 : 1;
+        if (bar == 1) Scroller.ScrollToHorizontalOffset(Scroller.HorizontalOffset - e.Delta / 2.0);
+        else Scroller.ScrollToVerticalOffset(Scroller.VerticalOffset - e.Delta / 2.0);
+        e.Handled = true;
+    }
+
+    public void SnapToEdge(bool animate, bool pickEdge = false)
     {
         var hwnd = new WindowInteropHelper(this).Handle;
         if (hwnd == IntPtr.Zero || PresentationSource.FromVisual(this)?.CompositionTarget is not { } target) return;
@@ -180,10 +208,20 @@ public partial class MainWindow : Window
         var topLeft = toDip.Transform(new Point(info.rcWork.Left, info.rcWork.Top));
         var bottomRight = toDip.Transform(new Point(info.rcWork.Right, info.rcWork.Bottom));
 
-        bool left = Left + ActualWidth / 2 < (topLeft.X + bottomRight.X) / 2;
-        bool top = Top + ActualHeight / 2 < (topLeft.Y + bottomRight.Y) / 2;
-        double x = left ? topLeft.X + SnapMargin : bottomRight.X - ActualWidth - SnapMargin;
-        double y = top ? topLeft.Y + SnapMargin : bottomRight.Y - ActualHeight - SnapMargin;
+        if (pickEdge)
+        {
+            double dl = Left - topLeft.X, dr = bottomRight.X - (Left + ActualWidth);
+            double dt = Top - topLeft.Y, db = bottomRight.Y - (Top + ActualHeight);
+            double min = Math.Min(Math.Min(dl, dr), Math.Min(dt, db));
+            _edge = min == dl ? Edge.Left : min == dr ? Edge.Right : min == dt ? Edge.Top : Edge.Bottom;
+            ApplyOrientation();
+            UpdateLayout(); // so ActualWidth/Height reflect the new row/column shape
+        }
+
+        double minX = topLeft.X + SnapMargin, maxX = Math.Max(minX, bottomRight.X - ActualWidth - SnapMargin);
+        double minY = topLeft.Y + SnapMargin, maxY = Math.Max(minY, bottomRight.Y - ActualHeight - SnapMargin);
+        double x = _edge switch { Edge.Left => minX, Edge.Right => maxX, _ => Math.Clamp(Left, minX, maxX) };
+        double y = _edge switch { Edge.Top => minY, Edge.Bottom => maxY, _ => Math.Clamp(Top, minY, maxY) };
 
         if (!animate)
         {
