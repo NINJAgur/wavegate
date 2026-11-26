@@ -1,4 +1,4 @@
-# Builds dist\WaveGate-Setup-<version>.exe: the APO, both .NET apps (self-contained, so no runtime is
+# Builds dist\WaveGate-Setup.exe: the APO, both .NET apps (self-contained, so no runtime is
 # needed on the target PC) and the Inno Setup installer around them.
 param([string]$Version = "1.0.0")
 $ErrorActionPreference = "Stop"
@@ -46,4 +46,4 @@ Write-Host "Packaging..."
 & $iscc /Q "/DAppVersion=$Version" installer\WaveGate.iss
 if ($LASTEXITCODE) { throw "Inno Setup failed." }
 
-Get-Item "dist\WaveGate-Setup-$Version.exe" | ForEach-Object { "Built $($_.FullName) ($([math]::Round($_.Length / 1MB, 1)) MB)" }
+Get-Item "dist\WaveGate-Setup.exe" | ForEach-Object { "Built $($_.FullName) ($([math]::Round($_.Length / 1MB, 1)) MB)" }
