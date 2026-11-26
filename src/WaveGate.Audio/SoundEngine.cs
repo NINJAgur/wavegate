@@ -48,12 +48,54 @@ public sealed class SoundEngine : IDisposable
     public float MicVolume { get => _tap.MicVolume; set => _tap.MicVolume = value; }
     public float SidetoneVolume { get => _tap.SidetoneVolume; set => _tap.SidetoneVolume = value; }
 
-    public void Play(string path)
+    /// <param name="key">Identifies the clip so it can be stopped or tracked; several voices may share one.</param>
+    public void Play(Guid key, string path, PlayOptions options)
     {
-        var voice = Voice.Open(path, _mixer.WaveFormat);
+        var voice = Voice.Open(key, path, options, _mixer.WaveFormat);
         lock (_voicesLock) _voices.Add(voice);
         _mixer.AddMixerInput(voice);
     }
+
+    public bool IsPlaying(Guid key)
+    {
+        lock (_voicesLock) return _voices.Any(v => v.Key == key);
+    }
+
+    public void Stop(Guid key)
+    {
+        Voice[] stopped;
+        lock (_voicesLock)
+        {
+            stopped = _voices.Where(v => v.Key == key).ToArray();
+            _voices.RemoveAll(v => v.Key == key);
+        }
+        // RemoveMixerInput takes the mixer's source lock, so no Read is inside the voice afterwards.
+        foreach (var v in stopped)
+        {
+            _mixer.RemoveMixerInput(v);
+            v.Dispose();
+        }
+    }
+
+    /// <summary>Playback position 0..1 of the newest voice of each playing clip.</summary>
+    public Dictionary<Guid, double> GetProgress()
+    {
+        var result = new Dictionary<Guid, double>();
+        lock (_voicesLock)
+            foreach (var v in _voices) result[v.Key] = v.Progress;
+        return result;
+    }
+
+    public static TimeSpan GetDuration(string path)
+    {
+        using var reader = OpenReader(path);
+        return reader.TotalTime;
+    }
+
+    private static WaveStream OpenReader(string path) =>
+        Path.GetExtension(path).Equals(".ogg", StringComparison.OrdinalIgnoreCase)
+            ? new VorbisWaveReader(path)
+            : new AudioFileReader(path); // WAV, MP3; MP4/M4A go through Media Foundation (audio track only)
 
     public void StopAll()
     {
@@ -91,26 +133,44 @@ public sealed class SoundEngine : IDisposable
     {
         private readonly WaveStream _reader;
         private readonly ISampleProvider _pipeline;
+        private readonly long _totalSamples;
+        private long _samplesRead;
 
-        private Voice(WaveStream reader, ISampleProvider pipeline)
+        private Voice(Guid key, WaveStream reader, ISampleProvider pipeline, long totalSamples)
         {
+            Key = key;
             _reader = reader;
             _pipeline = pipeline;
+            _totalSamples = Math.Max(1, totalSamples);
         }
+
+        public Guid Key { get; }
+
+        public double Progress => Math.Min(1.0, Interlocked.Read(ref _samplesRead) / (double)_totalSamples);
 
         public WaveFormat WaveFormat => _pipeline.WaveFormat;
 
-        public int Read(float[] buffer, int offset, int count) => _pipeline.Read(buffer, offset, count);
-
-        public static Voice Open(string path, WaveFormat target)
+        public int Read(float[] buffer, int offset, int count)
         {
-            WaveStream reader = Path.GetExtension(path).Equals(".ogg", StringComparison.OrdinalIgnoreCase)
-                ? new VorbisWaveReader(path)
-                : new AudioFileReader(path); // WAV, MP3; MP4/M4A go through Media Foundation (audio track only)
+            int read = _pipeline.Read(buffer, offset, count);
+            Interlocked.Add(ref _samplesRead, read);
+            return read;
+        }
+
+        public static Voice Open(Guid key, string path, PlayOptions options, WaveFormat target)
+        {
+            var reader = OpenReader(path);
 
             try
             {
+                var total = reader.TotalTime.TotalSeconds;
+                var start = Math.Clamp(options.TrimStart, 0, total);
+                var end = Math.Clamp(options.TrimEnd ?? total, start, total);
+                if (start > 0) reader.CurrentTime = TimeSpan.FromSeconds(start);
+
                 ISampleProvider p = reader.ToSampleProvider();
+                if (end < total) p = new OffsetSampleProvider(p) { Take = TimeSpan.FromSeconds(end - start) };
+                if (options.Volume != 1f) p = new VolumeSampleProvider(p) { Volume = options.Volume };
 
                 if (p.WaveFormat.SampleRate != target.SampleRate)
                     p = new WdlResamplingSampleProvider(p, target.SampleRate);
@@ -122,7 +182,7 @@ public sealed class SoundEngine : IDisposable
                     _ => new MultiplexingSampleProvider([p], 2), // keep front L/R of multichannel files
                 };
 
-                return new Voice(reader, p);
+                return new Voice(key, reader, p, (long)((end - start) * target.SampleRate) * target.Channels);
             }
             catch
             {
@@ -134,3 +194,8 @@ public sealed class SoundEngine : IDisposable
         public void Dispose() => _reader.Dispose();
     }
 }
+
+/// <param name="Volume">Linear gain applied to this clip.</param>
+/// <param name="TrimStart">Seconds into the file to start at.</param>
+/// <param name="TrimEnd">Seconds into the file to stop at; null = end of file.</param>
+public sealed record PlayOptions(float Volume = 1f, double TrimStart = 0, double? TrimEnd = null);

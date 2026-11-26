@@ -21,8 +21,8 @@
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
                         <Border x:Name="Bg" Background="{TemplateBinding Background}" CornerRadius="6"
-                                Padding="{TemplateBinding Padding}">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                Padding="{TemplateBinding Padding}" ClipToBounds="True">
+                            <ContentPresenter HorizontalAlignment="Stretch" VerticalAlignment="Stretch" />
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
@@ -42,33 +42,40 @@
             <Setter Property="Height" Value="24" />
             <Setter Property="Margin" Value="4,0,0,0" />
             <Setter Property="Padding" Value="8,0" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
         </Style>
     </Window.Resources>
 
     <Border CornerRadius="10" Background="#EB1B1E25" BorderBrush="#33FFFFFF" BorderThickness="1" Padding="8">
         <DockPanel>
-            <!-- Header doubles as the drag handle. -->
+            <!-- Header doubles as the drag handle; right-click picks what the overlay shows. -->
             <Grid DockPanel.Dock="Top" Margin="2,0,0,8" Background="Transparent"
-                  MouseLeftButtonDown="OnHeaderMouseDown">
+                  MouseLeftButtonDown="OnHeaderMouseDown" ContextMenuOpening="OnHeaderContextMenuOpening">
+                <Grid.ContextMenu>
+                    <ContextMenu />
+                </Grid.ContextMenu>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <Ellipse x:Name="MicDot" Width="9" Height="9" Fill="#6B7280" VerticalAlignment="Center"
-                         ToolTip="No microphone set up" />
-                <TextBlock Grid.Column="1" Text="WaveGate" FontWeight="SemiBold" Margin="8,0,0,0"
-                           VerticalAlignment="Center" />
-                <Button Grid.Column="2" Style="{StaticResource HeaderButton}" Background="#7A2E35"
+                <Ellipse x:Name="MicDot" Width="9" Height="9" Fill="#6B7280" VerticalAlignment="Center" />
+                <TextBlock x:Name="SourceTitle" Grid.Column="1" FontWeight="SemiBold" Margin="8,0,0,0"
+                           VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                           ToolTip="Right-click to choose what the overlay shows" />
+                <Button Grid.Column="2" Style="{StaticResource HeaderButton}" Content="Library"
+                        ToolTip="Open the full library" Click="OnLibraryClick" />
+                <Button Grid.Column="3" Style="{StaticResource HeaderButton}" Background="#7A2E35"
                         Content="Stop all" Click="OnStopAllClick" />
-                <Button Grid.Column="3" Style="{StaticResource HeaderButton}" Content="—"
+                <Button Grid.Column="4" Style="{StaticResource HeaderButton}" Content="—"
                         ToolTip="Hide (tray icon or hotkey brings it back)" Click="OnHideClick" />
             </Grid>
 
             <Grid>
-                <TextBlock x:Name="EmptyHint" Text="Drop MP3, WAV, OGG or MP4 files here"
-                           Foreground="#8B93A1" Margin="0,24" HorizontalAlignment="Center" />
+                <TextBlock x:Name="EmptyHint" Foreground="#8B93A1" Margin="8,20" TextWrapping="Wrap"
+                           TextAlignment="Center" HorizontalAlignment="Center" />
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <ItemsControl x:Name="ClipList">
                         <ItemsControl.ItemsPanel>
@@ -78,21 +85,31 @@
                         </ItemsControl.ItemsPanel>
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
-                                <Button Style="{StaticResource ClipButton}" Click="OnClipClick" ToolTip="{Binding Name}">
+                                <Button Style="{StaticResource ClipButton}" Click="OnClipClick" ToolTip="{Binding Name}"
+                                        Padding="0">
                                     <Button.ContextMenu>
                                         <ContextMenu>
+                                            <MenuItem Header="Edit…" Click="OnEditClick" />
                                             <MenuItem Header="Set hotkey…" Click="OnSetHotkeyClick" />
                                             <MenuItem Header="Clear hotkey" Click="OnClearHotkeyClick" />
                                             <Separator />
                                             <MenuItem Header="Remove from board" Click="OnRemoveClick" />
                                         </ContextMenu>
                                     </Button.ContextMenu>
-                                    <StackPanel>
-                                        <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis"
-                                                   MaxWidth="88" TextAlignment="Center" />
-                                        <TextBlock Text="{Binding Hotkey}" FontSize="10" Foreground="#8B93A1"
-                                                   TextAlignment="Center" />
-                                    </StackPanel>
+                                    <Grid>
+                                        <StackPanel VerticalAlignment="Center" Margin="6,4">
+                                            <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis"
+                                                       TextAlignment="Center" />
+                                            <TextBlock Text="{Binding Hotkey}" FontSize="10" Foreground="#8B93A1"
+                                                       TextAlignment="Center" />
+                                        </StackPanel>
+                                        <Border Height="3" VerticalAlignment="Bottom" Background="#3D7BD9"
+                                                RenderTransformOrigin="0,0.5">
+                                            <Border.RenderTransform>
+                                                <ScaleTransform ScaleX="{Binding Progress}" />
+                                            </Border.RenderTransform>
+                                        </Border>
+                                    </Grid>
                                 </Button>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>

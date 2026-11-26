@@ -26,22 +26,30 @@ WaveGate/
    │  ├─ RegistryOwnership.cs        take ownership / restore the original ACL
    │  └─ AudioService.cs             restart Audiosrv
    └─ WaveGate.App/                  WPF overlay -> WaveGate.exe (namespace WaveGate.Overlay)
-      ├─ App.xaml(.cs)               wires config, engine, hotkeys, tray, overlay
-      ├─ MainWindow.xaml(.cs)        always-on-top, never takes focus, clip grid, drag-and-drop
+      ├─ App.xaml(.cs)               controller (implements IBoard) + shared dark theme
+      ├─ IBoard.cs                   what the windows may ask of the app
+      ├─ LibraryWindow.xaml(.cs)     full soundboard: categories, search, import, volumes
+      ├─ ClipEditorWindow.xaml(.cs)  per-clip name, category, volume, retrigger, trim, hotkey
+      ├─ MainWindow.xaml(.cs)        compact overlay: always-on-top, never takes focus
       ├─ Tray/TrayIcon.cs            show/hide, Stop all, Microphone attach/detach, Exit
       ├─ Hotkeys/                    Hotkey parsing, RegisterHotKey, capture dialog
       ├─ Setup/MicSetup.cs           runs WaveGate.Installer elevated (the only UAC prompt)
       └─ Config/                     %AppData%\WaveGate\board.json + clips\
 ```
 
-## Using the overlay
+## Using WaveGate
 
-- Drop MP3, WAV, OGG, MP4 or M4A files onto the overlay. For MP4 only the audio track is played. Each file is copied into `%AppData%\WaveGate\clips\`. Click a clip to play it.
-- Right-click a clip to set or clear its hotkey, or to remove it from the board. Removing a clip leaves the copied file in `clips\`.
-- The default global hotkeys are `Ctrl+Alt+W` to show or hide the overlay and `Ctrl+Alt+X` to stop all clips. You can change them in `board.json`.
-- A hotkey must include Ctrl, Alt or Win. F1–F24 and numpad keys are the exception and may be used on their own.
+- **Library** (opens at startup; tray icon > Open library, or double-click the tray icon): the full soundboard.
+  - Add sounds by dropping files or folders onto it, or with **Add sounds** / **Add folder**. MP3, WAV, OGG, MP4 and M4A work; for video only the audio track is used.
+  - Every file is **copied** into `%AppData%\WaveGate\clips\`, so moving or deleting the original does not break the board. The board itself (names, categories, hotkeys, settings) lives in `%AppData%\WaveGate\board.json`.
+  - Files inside a dropped folder go into a category named after the folder that contains them. Loose files go into the selected category.
+  - Categories: **+ New category**, right-click to rename or delete (deleting keeps the sounds), drag a sound onto a category to move it.
+  - Right-click a sound for Edit (name, category, volume, trim start/end with preview, what a second press does: restart / overlap / stop), hotkeys, favorite, or Remove from board. Removing leaves the copied file in `clips\`.
+  - **Mic volume** sets how loud clips are for others; **Earphones** sets how loud you hear them.
+- **Overlay**: a small always-on-top strip for in-game use that never takes focus. It shows ★ Favorites by default; right-click its header to show all sounds or one category instead. Files dropped on it land in what it is showing.
+- The default global hotkeys are `Ctrl+Alt+W` to show or hide the overlay and `Ctrl+Alt+X` to stop all clips. You can change them in `board.json`.- A hotkey must include Ctrl, Alt or Win. F1–F24 and numpad keys are the exception and may be used on their own.
 - Tray icon > Microphone > Attach to … runs the installer once, behind a single UAC prompt. Detach restores the mic's original settings.
-- The dot in the header shows the mic link:
+- The dot in the overlay header and the library status bar shows the mic link:
   - grey: no mic set up
   - amber: attached, but waiting for an app to open the mic
   - green: live

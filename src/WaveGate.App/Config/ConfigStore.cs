@@ -46,6 +46,26 @@ public sealed class ConfigStore
 
     public string ClipPath(ClipEntry clip) => Path.Combine(ClipsDir, clip.FileName);
 
+    /// <summary>
+    /// Expands dropped paths into (file, category) pairs. Files inside a dropped folder take the
+    /// name of the folder that directly contains them; loose files get <paramref name="defaultCategory"/>.
+    /// </summary>
+    public static IEnumerable<(string File, string? Category)> ExpandImports(IEnumerable<string> paths, string? defaultCategory)
+    {
+        foreach (var path in paths)
+        {
+            if (Directory.Exists(path))
+            {
+                foreach (var file in Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories).Where(IsSupported).Order())
+                    yield return (file, Path.GetFileName(Path.GetDirectoryName(file)));
+            }
+            else if (IsSupported(path))
+            {
+                yield return (path, defaultCategory);
+            }
+        }
+    }
+
     /// <summary>Copies the file into the clips folder under a unique name.</summary>
     public ClipEntry Import(string sourcePath)
     {

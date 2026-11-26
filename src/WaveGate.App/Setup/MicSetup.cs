@@ -25,6 +25,30 @@ public static class MicSetup
     private static string LogPath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "WaveGate", "installer.log");
 
+    /// <summary>
+    /// Finds a mic attached outside the app (e.g. the installer run by hand): every live attachment
+    /// has a backup file, and detach renames it to *.restored-*.json.
+    /// </summary>
+    public static string? FindAttachedMic()
+    {
+        var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "WaveGate", "backup");
+        if (!Directory.Exists(dir)) return null;
+
+        foreach (var file in Directory.EnumerateFiles(dir, "*.json").Where(f => !f.Contains(".restored-")))
+        {
+            try
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(file));
+                if (doc.RootElement.TryGetProperty("DeviceId", out var id) && id.GetString() is { } deviceId) return deviceId;
+            }
+            catch (Exception e) when (e is IOException or System.Text.Json.JsonException or UnauthorizedAccessException)
+            {
+                // Unreadable backup: ignore it, the user can still attach from the tray.
+            }
+        }
+        return null;
+    }
+
     public static IReadOnlyList<Microphone> ListMicrophones()
     {
         using var enumerator = new MMDeviceEnumerator();

@@ -1,4 +1,5 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.IO;
 using System.Windows;
 using System.Windows.Threading;
@@ -10,19 +11,25 @@ using WaveGate.Overlay.Tray;
 
 namespace WaveGate.Overlay;
 
-/// <summary>Owns config, audio engine, hotkeys, tray and overlay, and wires them together.</summary>
-public partial class App : Application
+/// <summary>Owns config, audio engine, hotkeys, tray, overlay and library, and wires them together.</summary>
+public partial class App : Application, IBoard
 {
     private readonly ConfigStore _store = new();
-    private readonly ObservableCollection<ClipEntry> _clips = [];
     private BoardConfig _config = new();
     private Mutex? _singleInstance;
     private SoundEngine? _engine;
     private MainWindow? _window;
+    private LibraryWindow? _library;
     private GlobalHotkeys? _hotkeys;
     private TrayIcon? _tray;
     private DispatcherTimer? _statusTimer;
+    private DispatcherTimer? _progressTimer;
+    private DispatcherTimer? _saveTimer;
+    private HashSet<Guid> _playing = [];
     private bool _setupRunning;
+
+    public ObservableCollection<ClipEntry> Clips { get; } = [];
+    public ObservableCollection<string> Categories { get; } = [];
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -41,27 +48,38 @@ public partial class App : Application
         DispatcherUnhandledException += OnUnhandledException;
 
         _config = _store.Load();
-        foreach (var clip in _config.Clips) _clips.Add(clip);
+        _config.MicDeviceId ??= MicSetup.FindAttachedMic();
+        foreach (var name in _config.Categories) Categories.Add(name);
+        foreach (var clip in _config.Clips)
+        {
+            Clips.Add(clip);
+            clip.PropertyChanged += OnClipChanged;
+            if (clip.Category is { } c && !Categories.Contains(c, StringComparer.OrdinalIgnoreCase)) Categories.Add(c);
+        }
+        // Boards from before favorites existed would otherwise open to an empty overlay.
+        if (_config.OverlaySource is null && Clips.Count > 0 && !Clips.Any(c => c.Favorite)) _config.OverlaySource = "";
+        Clips.CollectionChanged += (_, _) => ScheduleSave();
+        Categories.CollectionChanged += (_, _) => ScheduleSave();
+
+        _saveTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
+        _saveTimer.Tick += (_, _) => Save();
 
         _tray = new TrayIcon(() => _config.MicDeviceId);
+        _tray.OpenLibraryRequested += ShowLibrary;
         _tray.ToggleOverlayRequested += ToggleOverlay;
         _tray.StopAllRequested += StopAll;
         _tray.AttachRequested += AttachMic;
         _tray.DetachRequested += DetachMic;
-        _tray.ExitRequested += Shutdown;
+        _tray.ExitRequested += ExitApp;
 
         _engine = TryCreateEngine(out var engineError);
         if (_engine is null) _tray.Notify("Headphone output unavailable", engineError!, isError: true);
 
-        _window = new MainWindow(_clips);
+        _window = new MainWindow(this);
         RestorePosition(_window);
-        _window.ClipClicked += PlayClip;
-        _window.SetHotkeyRequested += SetHotkey;
-        _window.ClearHotkeyRequested += ClearHotkey;
-        _window.RemoveRequested += RemoveClip;
-        _window.FilesDropped += ImportFiles;
-        _window.StopAllClicked += StopAll;
         _window.HideClicked += ToggleOverlay;
+
+        _library = new LibraryWindow(this);
 
         _hotkeys = new GlobalHotkeys(_window);
         RegisterHotkeys();
@@ -71,7 +89,12 @@ public partial class App : Application
         _statusTimer.Start();
         UpdateMicStatus();
 
+        _progressTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(33) };
+        _progressTimer.Tick += (_, _) => UpdateProgress();
+        _progressTimer.Start();
+
         _window.Show();
+        _library.Show();
     }
 
     protected override void OnExit(ExitEventArgs e)
@@ -82,6 +105,8 @@ public partial class App : Application
             Save();
         }
         _statusTimer?.Stop();
+        _progressTimer?.Stop();
+        _saveTimer?.Stop();
         _hotkeys?.Dispose();
         _tray?.Dispose();
         _engine?.Dispose();
@@ -90,15 +115,41 @@ public partial class App : Application
         base.OnExit(e);
     }
 
+    private void ExitApp()
+    {
+        if (_library is not null) _library.AllowClose = true;
+        Shutdown();
+    }
+
     // ---- Playback ----------------------------------------------------------
 
-    private void PlayClip(ClipEntry clip)
+    public void Play(ClipEntry clip)
     {
         if (_engine is null)
         {
             Notify("Headphone output unavailable", "Restart WaveGate after connecting an output device.", isError: true);
             return;
         }
+
+        if (_engine.IsPlaying(clip.Id))
+        {
+            switch (clip.Retrigger)
+            {
+                case RetriggerMode.Stop:
+                    _engine.Stop(clip.Id);
+                    return;
+                case RetriggerMode.Restart:
+                    _engine.Stop(clip.Id);
+                    break;
+            }
+        }
+
+        StartVoice(clip, new PlayOptions(clip.Volume, clip.TrimStart, clip.TrimEnd));
+    }
+
+    private void StartVoice(ClipEntry clip, PlayOptions options)
+    {
+        if (_engine is null) return;
 
         var path = _store.ClipPath(clip);
         if (!File.Exists(path))
@@ -109,7 +160,7 @@ public partial class App : Application
 
         try
         {
-            _engine.Play(path);
+            _engine.Play(clip.Id, path, options);
         }
         catch (Exception ex) // decoders throw a wide range of types for bad files
         {
@@ -117,14 +168,49 @@ public partial class App : Application
         }
     }
 
-    private void StopAll() => _engine?.StopAll();
+    public void StopAll() => _engine?.StopAll();
 
-    private static SoundEngine? TryCreateEngine(out string? error)
+    public float MicVolume
+    {
+        get => _config.MicVolume;
+        set
+        {
+            _config.MicVolume = value;
+            if (_engine is not null) _engine.MicVolume = value;
+            ScheduleSave();
+        }
+    }
+
+    public float SidetoneVolume
+    {
+        get => _config.SidetoneVolume;
+        set
+        {
+            _config.SidetoneVolume = value;
+            if (_engine is not null) _engine.SidetoneVolume = value;
+            ScheduleSave();
+        }
+    }
+
+    private void UpdateProgress()
+    {
+        var progress = _engine?.GetProgress() ?? [];
+        if (progress.Count == 0 && _playing.Count == 0) return;
+
+        foreach (var clip in Clips)
+        {
+            if (progress.TryGetValue(clip.Id, out var p)) clip.Progress = p;
+            else if (_playing.Contains(clip.Id)) clip.Progress = 0;
+        }
+        _playing = [.. progress.Keys];
+    }
+
+    private SoundEngine? TryCreateEngine(out string? error)
     {
         try
         {
             error = null;
-            return new SoundEngine();
+            return new SoundEngine { MicVolume = _config.MicVolume, SidetoneVolume = _config.SidetoneVolume };
         }
         catch (Exception ex) // no render device, device busy, driver error...
         {
@@ -150,28 +236,111 @@ public partial class App : Application
 
     // ---- Board -------------------------------------------------------------
 
-    private void ImportFiles(string[] files)
+    public string? OverlaySource
     {
-        foreach (var file in files)
+        get => _config.OverlaySource;
+        set
+        {
+            _config.OverlaySource = value;
+            ScheduleSave();
+        }
+    }
+
+    public void Import(IEnumerable<string> paths, string? category, bool favorite)
+    {
+        int added = 0;
+        foreach (var (file, fileCategory) in ConfigStore.ExpandImports(paths, category))
         {
             try
             {
-                _clips.Add(_store.Import(file));
+                var clip = _store.Import(file);
+                clip.Category = fileCategory;
+                clip.Favorite = favorite;
+                if (fileCategory is not null && !Categories.Contains(fileCategory, StringComparer.OrdinalIgnoreCase))
+                    Categories.Add(fileCategory);
+                clip.PropertyChanged += OnClipChanged;
+                Clips.Add(clip);
+                added++;
             }
             catch (IOException ex)
             {
                 Notify($"Could not add {Path.GetFileName(file)}", ex.Message, isError: true);
             }
         }
-        Save();
+        if (added == 0) Notify("Nothing added", "No MP3, WAV, OGG, MP4 or M4A files were found.");
     }
 
-    private void RemoveClip(ClipEntry clip)
+    public void Remove(ClipEntry clip)
     {
         // The copied audio file stays in the clips folder; only the board entry goes.
-        _clips.Remove(clip);
-        Save();
+        _engine?.Stop(clip.Id);
+        clip.PropertyChanged -= OnClipChanged;
+        Clips.Remove(clip);
         RegisterHotkeys();
+    }
+
+    public void Edit(ClipEntry clip)
+    {
+        TimeSpan? duration = null;
+        try
+        {
+            duration = SoundEngine.GetDuration(_store.ClipPath(clip));
+        }
+        catch (Exception) // unreadable file: the editor just hides trimming
+        {
+        }
+
+        var editor = new ClipEditorWindow(clip, Categories, duration,
+            preview: options => { _engine?.Stop(clip.Id); StartVoice(clip, options); },
+            stopPreview: () => _engine?.Stop(clip.Id),
+            setHotkey: () => SetHotkey(clip),
+            clearHotkey: () => ClearHotkey(clip));
+        if (_library is { IsVisible: true }) editor.Owner = _library;
+
+        if (editor.ShowDialog() == true && clip.Category is { } c && !Categories.Contains(c, StringComparer.OrdinalIgnoreCase))
+            Categories.Add(c);
+    }
+
+    public string? AddCategory(string name)
+    {
+        name = name.Trim();
+        if (name.Length == 0) return "Enter a name.";
+        if (Categories.Contains(name, StringComparer.OrdinalIgnoreCase)) return $"\"{name}\" already exists.";
+        Categories.Add(name);
+        _window?.Refresh();
+        return null;
+    }
+
+    public string? RenameCategory(string oldName, string newName)
+    {
+        newName = newName.Trim();
+        if (newName.Length == 0) return "Enter a name.";
+        if (!string.Equals(oldName, newName, StringComparison.OrdinalIgnoreCase) &&
+            Categories.Contains(newName, StringComparer.OrdinalIgnoreCase))
+            return $"\"{newName}\" already exists.";
+
+        int index = Categories.IndexOf(oldName);
+        if (index < 0) return null;
+        Categories[index] = newName;
+        foreach (var clip in Clips.Where(c => string.Equals(c.Category, oldName, StringComparison.OrdinalIgnoreCase)))
+            clip.Category = newName;
+        if (string.Equals(_config.OverlaySource, oldName, StringComparison.OrdinalIgnoreCase)) OverlaySource = newName;
+        _window?.Refresh();
+        return null;
+    }
+
+    public void DeleteCategory(string name)
+    {
+        // Clips stay on the board; they just lose the category.
+        foreach (var clip in Clips.Where(c => string.Equals(c.Category, name, StringComparison.OrdinalIgnoreCase)))
+            clip.Category = null;
+        Categories.Remove(name);
+        _window?.Refresh();
+    }
+
+    private void OnClipChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(ClipEntry.Progress)) ScheduleSave();
     }
 
     // ---- Hotkeys -----------------------------------------------------------
@@ -191,14 +360,14 @@ public partial class App : Application
 
         Bind(_config.Hotkeys.ToggleOverlay, "Show/hide overlay", ToggleOverlay);
         Bind(_config.Hotkeys.StopAll, "Stop all", StopAll);
-        foreach (var clip in _clips)
-            Bind(clip.Hotkey, clip.Name, () => PlayClip(clip));
+        foreach (var clip in Clips)
+            Bind(clip.Hotkey, clip.Name, () => Play(clip));
 
         if (failed.Count > 0)
             Notify("Some hotkeys are unavailable", "Invalid or used by another app: " + string.Join(", ", failed), isError: true);
     }
 
-    private void SetHotkey(ClipEntry clip)
+    public void SetHotkey(ClipEntry clip)
     {
         // Release everything so the combination reaches the dialog instead of firing.
         _hotkeys?.UnregisterAll();
@@ -215,7 +384,6 @@ public partial class App : Application
             }
 
             clip.Hotkey = hotkey.ToString();
-            Save();
         }
         finally
         {
@@ -223,10 +391,9 @@ public partial class App : Application
         }
     }
 
-    private void ClearHotkey(ClipEntry clip)
+    public void ClearHotkey(ClipEntry clip)
     {
         clip.Hotkey = null;
-        Save();
         RegisterHotkeys();
     }
 
@@ -236,7 +403,7 @@ public partial class App : Application
 
         if (Same(_config.Hotkeys.ToggleOverlay)) return "Show/hide overlay";
         if (Same(_config.Hotkeys.StopAll)) return "Stop all";
-        return _clips.FirstOrDefault(c => c != except && Same(c.Hotkey))?.Name;
+        return Clips.FirstOrDefault(c => c != except && Same(c.Hotkey))?.Name;
     }
 
     // ---- Microphone setup (elevated) ---------------------------------------
@@ -305,9 +472,18 @@ public partial class App : Application
             : _config.MicDeviceId is null ? MicStatus.NotSetUp
             : MicStatus.Waiting;
         _window?.SetMicStatus(status);
+        _library?.SetMicStatus(status);
     }
 
-    // ---- Window / persistence ----------------------------------------------
+    // ---- Windows / persistence ---------------------------------------------
+
+    public void ShowLibrary()
+    {
+        if (_library is null) return;
+        _library.Show();
+        if (_library.WindowState == WindowState.Minimized) _library.WindowState = WindowState.Normal;
+        _library.Activate();
+    }
 
     private void ToggleOverlay()
     {
@@ -349,9 +525,19 @@ public partial class App : Application
         _config.Top = _window.Top;
     }
 
+    /// <summary>Coalesces bursts of edits (sliders, folder imports) into one write.</summary>
+    private void ScheduleSave()
+    {
+        if (_saveTimer is null) return;
+        _saveTimer.Stop();
+        _saveTimer.Start();
+    }
+
     private void Save()
     {
-        _config.Clips = [.. _clips];
+        _saveTimer?.Stop();
+        _config.Clips = [.. Clips];
+        _config.Categories = [.. Categories];
         try
         {
             _store.Save(_config);
@@ -366,7 +552,7 @@ public partial class App : Application
 
     private void OnUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
     {
-        // Keep the overlay alive; a soundboard that vanishes mid-game is worse than a missed click.
+        // Keep the app alive; a soundboard that vanishes mid-game is worse than a missed click.
         Notify("Something went wrong", e.Exception.Message, isError: true);
         e.Handled = true;
     }

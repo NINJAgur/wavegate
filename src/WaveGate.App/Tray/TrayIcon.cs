@@ -10,6 +10,7 @@ public sealed class TrayIcon : IDisposable
     private readonly NotifyIcon _icon;
     private readonly Func<string?> _attachedMicId;
 
+    public event Action? OpenLibraryRequested;
     public event Action? ToggleOverlayRequested;
     public event Action? StopAllRequested;
     public event Action<string>? AttachRequested;
@@ -35,6 +36,10 @@ public sealed class TrayIcon : IDisposable
         {
             if (e.Button == MouseButtons.Left) ToggleOverlayRequested?.Invoke();
         };
+        _icon.MouseDoubleClick += (_, e) =>
+        {
+            if (e.Button == MouseButtons.Left) OpenLibraryRequested?.Invoke();
+        };
     }
 
     public void Notify(string title, string text, bool isError = false) =>
@@ -44,9 +49,10 @@ public sealed class TrayIcon : IDisposable
     {
         menu.Items.Clear();
 
-        var toggle = new ToolStripMenuItem("Show / hide overlay", null, (_, _) => ToggleOverlayRequested?.Invoke());
-        toggle.Font = new Font(toggle.Font, System.Drawing.FontStyle.Bold);
-        menu.Items.Add(toggle);
+        var library = new ToolStripMenuItem("Open library", null, (_, _) => OpenLibraryRequested?.Invoke());
+        library.Font = new Font(library.Font, System.Drawing.FontStyle.Bold);
+        menu.Items.Add(library);
+        menu.Items.Add("Show / hide overlay", null, (_, _) => ToggleOverlayRequested?.Invoke());
         menu.Items.Add("Stop all", null, (_, _) => StopAllRequested?.Invoke());
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(BuildMicMenu());

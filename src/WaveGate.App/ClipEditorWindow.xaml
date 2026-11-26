@@ -1,0 +1,81 @@
+<Window x:Class="WaveGate.Overlay.ClipEditorWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Edit sound" Width="460" SizeToContent="Height" ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
+        Background="{StaticResource BgBrush}" Foreground="{StaticResource TextBrush}"
+        FontFamily="Segoe UI" FontSize="13">
+    <Window.Resources>
+        <Style x:Key="Label" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
+            <Setter Property="Margin" Value="0,12,0,4" />
+        </Style>
+    </Window.Resources>
+
+    <StackPanel Margin="18,8,18,18">
+        <TextBlock Style="{StaticResource Label}" Text="Name" />
+        <TextBox x:Name="NameBox" />
+
+        <TextBlock Style="{StaticResource Label}" Text="Category (type a new name to create one)" />
+        <ComboBox x:Name="CategoryBox" IsEditable="True" />
+
+        <TextBlock Style="{StaticResource Label}" Text="Volume" />
+        <DockPanel>
+            <TextBlock x:Name="VolumeText" DockPanel.Dock="Right" Width="44" TextAlignment="Right" VerticalAlignment="Center" />
+            <Slider x:Name="VolumeSlider" Minimum="0" Maximum="2" VerticalAlignment="Center"
+                    ValueChanged="OnVolumeChanged" ToolTip="100% = the file's own level" />
+        </DockPanel>
+
+        <TextBlock Style="{StaticResource Label}" Text="When pressed while already playing" />
+        <ComboBox x:Name="RetriggerBox">
+            <ComboBoxItem Content="Restart it from the beginning" />
+            <ComboBoxItem Content="Play another copy over it" />
+            <ComboBoxItem Content="Stop it" />
+        </ComboBox>
+
+        <StackPanel x:Name="TrimPanel">
+            <TextBlock Style="{StaticResource Label}" Text="Trim" />
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="44" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="64" />
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition />
+                    <RowDefinition />
+                </Grid.RowDefinitions>
+                <TextBlock Text="Start" VerticalAlignment="Center" />
+                <Slider x:Name="StartSlider" Grid.Column="1" VerticalAlignment="Center" ValueChanged="OnTrimChanged" />
+                <TextBlock x:Name="StartText" Grid.Column="2" TextAlignment="Right" VerticalAlignment="Center" />
+                <TextBlock Grid.Row="1" Text="End" VerticalAlignment="Center" Margin="0,8,0,0" />
+                <Slider x:Name="EndSlider" Grid.Row="1" Grid.Column="1" VerticalAlignment="Center" Margin="0,8,0,0"
+                        ValueChanged="OnTrimChanged" />
+                <TextBlock x:Name="EndText" Grid.Row="1" Grid.Column="2" TextAlignment="Right" VerticalAlignment="Center"
+                           Margin="0,8,0,0" />
+            </Grid>
+        </StackPanel>
+        <TextBlock x:Name="NoTrimText" Style="{StaticResource Label}" Visibility="Collapsed"
+                   Text="Trim is unavailable: the file's length could not be read." />
+
+        <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+            <Button Style="{StaticResource WgButton}" Content="▶ Preview" Click="OnPreviewClick"
+                    ToolTip="Plays with the settings above (also into the mic)" />
+            <Button Style="{StaticResource WgButton}" Content="■ Stop" Margin="8,0,0,0" Click="OnStopClick" />
+        </StackPanel>
+
+        <TextBlock Style="{StaticResource Label}" Text="Hotkey (applies immediately)" />
+        <DockPanel>
+            <Button DockPanel.Dock="Right" Style="{StaticResource WgButton}" Content="Clear" Margin="8,0,0,0"
+                    Click="OnClearHotkeyClick" />
+            <Button DockPanel.Dock="Right" Style="{StaticResource WgButton}" Content="Set…" Margin="8,0,0,0"
+                    Click="OnSetHotkeyClick" />
+            <TextBlock x:Name="HotkeyText" VerticalAlignment="Center" />
+        </DockPanel>
+
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,22,0,0">
+            <Button Style="{StaticResource AccentButton}" Content="Save" MinWidth="90" IsDefault="True" Click="OnSaveClick" />
+            <Button Style="{StaticResource WgButton}" Content="Cancel" MinWidth="90" Margin="8,0,0,0" IsCancel="True" />
+        </StackPanel>
+    </StackPanel>
+</Window>
