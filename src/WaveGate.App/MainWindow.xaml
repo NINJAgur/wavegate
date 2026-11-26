@@ -67,7 +67,7 @@
             </Grid>
 
             <Grid>
-                <TextBlock x:Name="EmptyHint" Text="Drop MP3, WAV or OGG files here"
+                <TextBlock x:Name="EmptyHint" Text="Drop MP3, WAV, OGG or MP4 files here"
                            Foreground="#8B93A1" Margin="0,24" HorizontalAlignment="Center" />
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <ItemsControl x:Name="ClipList">

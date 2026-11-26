@@ -106,7 +106,7 @@ public sealed class SoundEngine : IDisposable
         {
             WaveStream reader = Path.GetExtension(path).Equals(".ogg", StringComparison.OrdinalIgnoreCase)
                 ? new VorbisWaveReader(path)
-                : new AudioFileReader(path); // WAV, MP3 (and anything Media Foundation decodes)
+                : new AudioFileReader(path); // WAV, MP3; MP4/M4A go through Media Foundation (audio track only)
 
             try
             {

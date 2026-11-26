@@ -36,7 +36,7 @@ WaveGate/
 
 ## Using the overlay
 
-- Drop MP3, WAV or OGG files onto the overlay. Each file is copied into `%AppData%\WaveGate\clips\`. Click a clip to play it.
+- Drop MP3, WAV, OGG, MP4 or M4A files onto the overlay. For MP4 only the audio track is played. Each file is copied into `%AppData%\WaveGate\clips\`. Click a clip to play it.
 - Right-click a clip to set or clear its hotkey, or to remove it from the board. Removing a clip leaves the copied file in `clips\`.
 - The default global hotkeys are `Ctrl+Alt+W` to show or hide the overlay and `Ctrl+Alt+X` to stop all clips. You can change them in `board.json`.
 - A hotkey must include Ctrl, Alt or Win. F1–F24 and numpad keys are the exception and may be used on their own.

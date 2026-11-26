@@ -6,7 +6,7 @@ namespace WaveGate.Overlay.Config;
 /// <summary>%AppData%\WaveGate\board.json plus a clips\ folder holding copies of imported files.</summary>
 public sealed class ConfigStore
 {
-    public static readonly string[] SupportedExtensions = [".mp3", ".wav", ".ogg"];
+    public static readonly string[] SupportedExtensions = [".mp3", ".wav", ".ogg", ".mp4", ".m4a"];
 
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
