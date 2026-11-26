@@ -53,10 +53,13 @@ public sealed class SoundEngine : IDisposable
         var old = _appCapture;
         _appCapture = null;
         _tap.MicOnly = null;
-        old?.Dispose();
+        // The loopback client is created on an MTA thread and has no cross-apartment proxy,
+        // so it must never be touched from the UI's STA thread: start and stop it on the pool.
+        if (old is not null) Task.Run(old.Dispose).GetAwaiter().GetResult();
         if (processId is not { } pid) return;
 
-        var capture = AppAudioCapture.Start(pid, _mixer.WaveFormat.SampleRate);
+        int rate = _mixer.WaveFormat.SampleRate;
+        var capture = Task.Run(() => AppAudioCapture.Start(pid, rate)).GetAwaiter().GetResult();
         _appCapture = capture;
         _tap.MicOnly = capture.Output;
     }

@@ -8,7 +8,11 @@ public static class ShareMenu
 {
     public static void Open(IBoard board, FrameworkElement anchor)
     {
-        var menu = new ContextMenu { PlacementTarget = anchor };
+        // Attached to the anchor like the gear menu: a free-floating ContextMenu did not stay open.
+        var menu = anchor.ContextMenu ??= new ContextMenu();
+        menu.PlacementTarget = anchor;
+        menu.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
+        menu.Items.Clear();
         var off = new MenuItem { Header = "Don't share", IsChecked = !board.Sharing };
         off.Click += (_, _) => board.Sharing = false;
         menu.Items.Add(off);
