@@ -51,6 +51,7 @@ public partial class LibraryWindow : Window
         SidetoneSlider.Value = board.SidetoneVolume;
         MicVolumeText.Text = $"{board.MicVolume:P0}";
         SidetoneText.Text = $"{board.SidetoneVolume:P0}";
+        FillShareBox([]);
 
         RebuildSidebar();
         RefreshView();
@@ -300,7 +301,44 @@ public partial class LibraryWindow : Window
     private void OnTileMouseDown(object sender, MouseButtonEventArgs e)
     {
         _dragStart = e.GetPosition(this);
-        _dragClip = ClipOf(sender);
+        // A press on the seek bar scrubs; it must not start dragging the tile to a category.
+        _dragClip = IsInSeekBar(e.OriginalSource as DependencyObject) ? null : ClipOf(sender);
+    }
+
+    private static bool IsInSeekBar(DependencyObject? element)
+    {
+        for (; element is not null; element = VisualTreeHelper.GetParent(element))
+            if (element is FrameworkElement { Name: "SeekBar" }) return true;
+        return false;
+    }
+
+    // ---- Seek bar ----------------------------------------------------------
+
+    private static double SeekFraction(FrameworkElement bar, MouseEventArgs e) =>
+        Math.Clamp(e.GetPosition(bar).X / Math.Max(1, bar.ActualWidth), 0, 1);
+
+    private void OnSeekDown(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not FrameworkElement bar || ClipOf(bar) is not { } clip) return;
+        e.Handled = true; // keep the press from reaching the tile and playing it
+        clip.Scrubbing = true;
+        clip.Progress = SeekFraction(bar, e);
+        bar.CaptureMouse();
+    }
+
+    private void OnSeekMove(object sender, MouseEventArgs e)
+    {
+        if (sender is FrameworkElement { IsMouseCaptured: true } bar && ClipOf(bar) is { } clip)
+            clip.Progress = SeekFraction(bar, e);
+    }
+
+    private void OnSeekUp(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not FrameworkElement { IsMouseCaptured: true } bar || ClipOf(bar) is not { } clip) return;
+        e.Handled = true;
+        bar.ReleaseMouseCapture();
+        clip.Scrubbing = false;
+        _board.Seek(clip, SeekFraction(bar, e));
     }
 
     private void OnTileMouseMove(object sender, MouseEventArgs e)
@@ -356,6 +394,72 @@ public partial class LibraryWindow : Window
     }
 
     private void OnStopAllClick(object sender, RoutedEventArgs e) => _board.StopAll();
+
+    // ---- Microphone options -------------------------------------------------
+
+    private void OnMicOptionsClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { ContextMenu: { } menu } button) return;
+        menu.Items.Clear();
+
+        IReadOnlyList<WaveGate.Overlay.Setup.Microphone> mics;
+        try
+        {
+            mics = WaveGate.Overlay.Setup.MicSetup.ListMicrophones();
+        }
+        catch (System.Runtime.InteropServices.COMException)
+        {
+            mics = [];
+        }
+
+        if (_board.MicDeviceId is { } attached)
+        {
+            var name = mics.FirstOrDefault(m => m.Id == attached)?.Name ?? "a disconnected microphone";
+            menu.Items.Add(new MenuItem { Header = $"Attached to {name}", IsEnabled = false, IsChecked = true });
+            menu.Items.Add(MenuItem("Detach (restores original settings)", _board.DetachMic));
+        }
+        else if (mics.Count == 0)
+        {
+            menu.Items.Add(new MenuItem { Header = "No active microphones", IsEnabled = false });
+        }
+        else
+        {
+            foreach (var mic in mics) menu.Items.Add(MenuItem($"Attach to {mic.Name}", () => _board.AttachMic(mic.Id)));
+        }
+
+        menu.Items.Add(new Separator());
+        menu.Items.Add(MenuItem("Windows recording settings…", () =>
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("control.exe", "mmsys.cpl,,1"))));
+
+        menu.PlacementTarget = button;
+        menu.IsOpen = true;
+    }
+
+    // ---- App audio sharing --------------------------------------------------
+
+    private static readonly WaveGate.Audio.AudioApp NotSharing = new(0, "Share app audio: off");
+    private bool _fillingShareBox;
+
+    private void FillShareBox(IEnumerable<WaveGate.Audio.AudioApp> apps)
+    {
+        _fillingShareBox = true;
+        var shared = _board.SharedApp;
+        var items = new List<WaveGate.Audio.AudioApp> { NotSharing };
+        items.AddRange(apps.Where(a => a.ProcessId != shared?.ProcessId));
+        if (shared is not null) items.Insert(1, shared);
+        ShareBox.ItemsSource = items;
+        ShareBox.SelectedItem = shared ?? NotSharing;
+        _fillingShareBox = false;
+    }
+
+    private void OnShareDropDownOpened(object? sender, EventArgs e) => FillShareBox(_board.AudioApps());
+
+    private void OnShareChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_fillingShareBox || ShareBox.SelectedItem is not WaveGate.Audio.AudioApp app) return;
+        _board.SharedApp = app == NotSharing ? null : app;
+        if (_board.SharedApp is null && app != NotSharing) FillShareBox([]); // sharing failed; show it as off
+    }
 
     // ---- Volumes -----------------------------------------------------------
 

@@ -188,7 +188,22 @@ public partial class App : Application, IBoard
         StartVoice(clip, new PlayOptions(clip.Volume, clip.TrimStart, clip.TrimEnd));
     }
 
-    private void StartVoice(ClipEntry clip, PlayOptions options)
+    public void Seek(ClipEntry clip, double fraction)
+    {
+        if (_engine is null) return;
+        try
+        {
+            if (_engine.Seek(clip.Id, fraction)) return;
+        }
+        catch (Exception ex) // decoders throw a wide range of types for bad files
+        {
+            Notify($"Couldn't seek \"{clip.Name}\"", ex.Message, isError: true);
+            return;
+        }
+        StartVoice(clip, new PlayOptions(clip.Volume, clip.TrimStart, clip.TrimEnd), fraction);
+    }
+
+    private void StartVoice(ClipEntry clip, PlayOptions options, double startAt = 0)
     {
         if (_engine is null) return;
 
@@ -201,11 +216,44 @@ public partial class App : Application, IBoard
 
         try
         {
-            _engine.Play(clip.Id, path, options);
+            _engine.Play(clip.Id, path, options, startAt);
         }
         catch (Exception ex) // decoders throw a wide range of types for bad files
         {
             Notify($"Can't play \"{clip.Name}\"", ex.Message, isError: true);
+        }
+    }
+
+    public IReadOnlyList<AudioApp> AudioApps()
+    {
+        try
+        {
+            return AppAudioCapture.ListApps();
+        }
+        catch (Exception ex) // COM errors while the audio service restarts
+        {
+            Notify("Couldn't list apps playing audio", ex.Message, isError: true);
+            return [];
+        }
+    }
+
+    private AudioApp? _sharedApp;
+
+    public AudioApp? SharedApp
+    {
+        get => _sharedApp;
+        set
+        {
+            _sharedApp = value;
+            try
+            {
+                _engine?.ShareAppAudio(value?.ProcessId);
+            }
+            catch (Exception ex) // needs Windows 10 2004+; the app may also have just closed
+            {
+                _sharedApp = null;
+                Notify($"Couldn't share audio from {value?.Name}", ex.Message, isError: true);
+            }
         }
     }
 
@@ -244,6 +292,7 @@ public partial class App : Application, IBoard
 
         foreach (var clip in Clips)
         {
+            if (clip.Scrubbing) continue;
             if (progress.TryGetValue(clip.Id, out var p)) clip.Progress = p;
             else if (_playing.Contains(clip.Id)) clip.Progress = 0;
         }
@@ -277,6 +326,7 @@ public partial class App : Application, IBoard
             _engine = TryCreateEngine(out error);
         }
         if (_engine is null) Notify("Headphone output unavailable", error ?? "", isError: true);
+        else if (_sharedApp is { } app) SharedApp = app;
     }
 
     // ---- Board -------------------------------------------------------------
@@ -453,7 +503,9 @@ public partial class App : Application, IBoard
 
     // ---- Microphone setup (elevated) ---------------------------------------
 
-    private async void AttachMic(string deviceId)
+    public string? MicDeviceId => _config.MicDeviceId;
+
+    public async void AttachMic(string deviceId)
     {
         if (_setupRunning) return;
         _setupRunning = true;
@@ -480,7 +532,7 @@ public partial class App : Application, IBoard
         }
     }
 
-    private async void DetachMic()
+    public async void DetachMic()
     {
         if (_setupRunning || _config.MicDeviceId is not { } deviceId) return;
         _setupRunning = true;

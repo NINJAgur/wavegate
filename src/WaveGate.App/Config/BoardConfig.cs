@@ -82,6 +82,10 @@ public sealed class ClipEntry : INotifyPropertyChanged
     [JsonIgnore]
     public double Progress { get => _progress; set => Set(ref _progress, value); }
 
+    /// <summary>True while the user drags the seek bar, so playback updates don't fight the drag.</summary>
+    [JsonIgnore]
+    public bool Scrubbing { get; set; }
+
     public event PropertyChangedEventHandler? PropertyChanged;
 
     private void Set<T>(ref T field, T value, [CallerMemberName] string name = "")

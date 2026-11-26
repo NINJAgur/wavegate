@@ -45,15 +45,48 @@ public sealed class SoundEngine : IDisposable
 
     public bool IsMicLinked => _ring.IsConsumerActive;
 
+    private AppAudioCapture? _appCapture;
+
+    /// <summary>Mixes one app's audio into the mic feed (not the headphones); null stops sharing.</summary>
+    public void ShareAppAudio(int? processId)
+    {
+        var old = _appCapture;
+        _appCapture = null;
+        _tap.MicOnly = null;
+        old?.Dispose();
+        if (processId is not { } pid) return;
+
+        var capture = AppAudioCapture.Start(pid, _mixer.WaveFormat.SampleRate);
+        _appCapture = capture;
+        _tap.MicOnly = capture.Output;
+    }
+
     public float MicVolume { get => _tap.MicVolume; set => _tap.MicVolume = value; }
     public float SidetoneVolume { get => _tap.SidetoneVolume; set => _tap.SidetoneVolume = value; }
 
     /// <param name="key">Identifies the clip so it can be stopped or tracked; several voices may share one.</param>
-    public void Play(Guid key, string path, PlayOptions options)
+    /// <param name="startAt">Where to start, as a fraction 0..1 of the trimmed length.</param>
+    public void Play(Guid key, string path, PlayOptions options, double startAt = 0)
     {
-        var voice = Voice.Open(key, path, options, _mixer.WaveFormat);
+        var voice = Voice.Open(key, path, options, _mixer.WaveFormat, startAt);
         lock (_voicesLock) _voices.Add(voice);
         _mixer.AddMixerInput(voice);
+    }
+
+    /// <summary>Restarts the clip's newest voice at <paramref name="fraction"/>, keeping its paused state; false if it isn't playing.</summary>
+    public bool Seek(Guid key, double fraction)
+    {
+        Voice? current;
+        lock (_voicesLock) current = _voices.LastOrDefault(v => v.Key == key);
+        if (current is null) return false;
+
+        // Reopening is simpler than seeking a live pipeline: the trim, resampler and progress all start fresh.
+        var next = Voice.Open(key, current.Path, current.Options, _mixer.WaveFormat, fraction);
+        next.Paused = current.Paused;
+        Stop(key);
+        lock (_voicesLock) _voices.Add(next);
+        _mixer.AddMixerInput(next);
+        return true;
     }
 
     public bool IsPlaying(Guid key)
@@ -136,6 +169,7 @@ public sealed class SoundEngine : IDisposable
         _reconnectTimer.Dispose();
         _output.Stop();
         _output.Dispose();
+        ShareAppAudio(null);
         StopAll();
         _ring.Dispose(); // safe: the output thread has stopped calling the tap
     }
@@ -148,15 +182,21 @@ public sealed class SoundEngine : IDisposable
         private readonly long _totalSamples;
         private long _samplesRead;
 
-        private Voice(Guid key, WaveStream reader, ISampleProvider pipeline, long totalSamples)
+        private Voice(Guid key, string path, PlayOptions options, WaveStream reader, ISampleProvider pipeline,
+            long totalSamples, long alreadyPlayed)
         {
             Key = key;
+            Path = path;
+            Options = options;
             _reader = reader;
             _pipeline = pipeline;
             _totalSamples = Math.Max(1, totalSamples);
+            _samplesRead = alreadyPlayed;
         }
 
         public Guid Key { get; }
+        public string Path { get; }
+        public PlayOptions Options { get; }
 
         public double Progress => Math.Min(1.0, Interlocked.Read(ref _samplesRead) / (double)_totalSamples);
 
@@ -177,7 +217,7 @@ public sealed class SoundEngine : IDisposable
             return read;
         }
 
-        public static Voice Open(Guid key, string path, PlayOptions options, WaveFormat target)
+        public static Voice Open(Guid key, string path, PlayOptions options, WaveFormat target, double startAt)
         {
             var reader = OpenReader(path);
 
@@ -186,10 +226,11 @@ public sealed class SoundEngine : IDisposable
                 var total = reader.TotalTime.TotalSeconds;
                 var start = Math.Clamp(options.TrimStart, 0, total);
                 var end = Math.Clamp(options.TrimEnd ?? total, start, total);
-                if (start > 0) reader.CurrentTime = TimeSpan.FromSeconds(start);
+                var from = start + (end - start) * Math.Clamp(startAt, 0, 1);
+                if (from > 0) reader.CurrentTime = TimeSpan.FromSeconds(from);
 
                 ISampleProvider p = reader.ToSampleProvider();
-                if (end < total) p = new OffsetSampleProvider(p) { Take = TimeSpan.FromSeconds(end - start) };
+                if (end < total) p = new OffsetSampleProvider(p) { Take = TimeSpan.FromSeconds(end - from) };
                 if (options.Volume != 1f) p = new VolumeSampleProvider(p) { Volume = options.Volume };
 
                 if (p.WaveFormat.SampleRate != target.SampleRate)
@@ -202,7 +243,9 @@ public sealed class SoundEngine : IDisposable
                     _ => new MultiplexingSampleProvider([p], 2), // keep front L/R of multichannel files
                 };
 
-                return new Voice(key, reader, p, (long)((end - start) * target.SampleRate) * target.Channels);
+                return new Voice(key, path, options, reader, p,
+                    (long)((end - start) * target.SampleRate) * target.Channels,
+                    (long)((from - start) * target.SampleRate) * target.Channels);
             }
             catch
             {

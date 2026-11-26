@@ -27,7 +27,7 @@ public sealed class TrayIcon : IDisposable
 
         _icon = new NotifyIcon
         {
-            Icon = SystemIcons.Application, // placeholder until the app ships its own .ico
+            Icon = LoadAppIcon(),
             Text = "WaveGate",
             ContextMenuStrip = menu,
             Visible = true,
@@ -58,6 +58,13 @@ public sealed class TrayIcon : IDisposable
         menu.Items.Add(BuildMicMenu());
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Exit", null, (_, _) => ExitRequested?.Invoke());
+    }
+
+    private static Icon LoadAppIcon()
+    {
+        var resource = System.Windows.Application.GetResourceStream(new Uri("pack://application:,,,/Assets/WaveGate.ico"));
+        using var stream = resource!.Stream;
+        return new Icon(stream, SystemInformation.SmallIconSize);
     }
 
     private ToolStripMenuItem BuildMicMenu()

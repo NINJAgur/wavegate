@@ -37,12 +37,27 @@ public sealed class MicTapSampleProvider : ISampleProvider
     public float MicVolume { get; set; } = 1f;
     public float SidetoneVolume { get; set; } = 1f;
 
+    /// <summary>Extra audio for the mic only, in the source's format; the user already hears it directly.</summary>
+    public ISampleProvider? MicOnly { get; set; }
+
+    private float[] _micMix = [];
+
     public int Read(float[] buffer, int offset, int count)
     {
         int read = _source.Read(buffer, offset, count);
         if (read <= 0) return read;
 
-        if (_ring.IsOpen) PushToMic(buffer.AsSpan(offset, read));
+        ReadOnlySpan<float> mic = buffer.AsSpan(offset, read);
+        if (MicOnly is { } extra)
+        {
+            EnsureSize(ref _micMix, read);
+            int got = extra.Read(_micMix, 0, read);
+            if (got < read) Array.Clear(_micMix, got, read - got);
+            for (int i = 0; i < read; i++) _micMix[i] += buffer[offset + i];
+            mic = _micMix.AsSpan(0, read);
+        }
+
+        if (_ring.IsOpen) PushToMic(mic);
 
         float sidetone = SidetoneVolume;
         if (sidetone != 1f)

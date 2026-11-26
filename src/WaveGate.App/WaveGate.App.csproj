@@ -11,7 +11,12 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>WaveGate</AssemblyName>
     <RootNamespace>WaveGate.Overlay</RootNamespace>
+    <ApplicationIcon>Assets\WaveGate.ico</ApplicationIcon>
   </PropertyGroup>
+
+  <ItemGroup>
+    <Resource Include="Assets\WaveGate.ico" />
+  </ItemGroup>
 
   <ItemGroup>
     <!-- Avoid WPF/WinForms name clashes (Application, MessageBox, KeyEventArgs...). -->
