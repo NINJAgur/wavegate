@@ -453,10 +453,11 @@ public partial class LibraryWindow : Window
     private void UpdateShareButton()
     {
         var on = _board.Sharing;
-        var style = (Style)FindResource(on ? "AccentButton" : "WgButton");
-        ShareToggle.Style = style;
-        ShareDrop.Style = style;
-        ShareLabel.Text = on ? $"Sharing {_board.ShareSource}" : "Share audio";
+        ShareToggle.Background = (Brush)FindResource(on ? "AccentBrush" : "InputBrush");
+        ShareToggle.BorderBrush = on ? new SolidColorBrush(Color.FromRgb(0xB8, 0xA6, 0xFF)) : (Brush)FindResource("BorderBrush");
+        ShareToggle.Foreground = on ? Brushes.White : (Brush)FindResource("MutedBrush");
+        ShareLabel.Text = on ? $"Sharing {_board.ShareSource}" : "Not sharing";
+        ShareLabel.Foreground = (Brush)FindResource(on ? "TextBrush" : "MutedBrush");
         ShareToggle.ToolTip = _board.ShareSource is { } source
             ? on ? $"Others hear {source} through your mic. Click to stop." : $"Click to send {source} into your mic"
             : "Send what an app is playing (a YouTube tab, a clip on X…) into your mic";
