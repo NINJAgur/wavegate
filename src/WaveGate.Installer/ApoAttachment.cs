@@ -17,9 +17,18 @@ public static class ApoAttachment
     // Must match CLSID_WaveGateApo in src/WaveGate.Apo/Guids.h.
     public const string ApoClsid = "{6E56FA97-0CB5-4A10-B2A8-5B83999A1A67}";
 
-    // PKEY_FX_EndpointEffectClsid: one instance per endpoint and still applied
-    // in RAW mode, so every app capturing from the mic hears the clip.
-    private const string EfxValue = "{d04e05a6-594b-4fb6-a80d-01af5eed7d1d},7";
+    // Legacy LFX/GFX (PreMix/PostMix) slots. The engine ignored our EFX on a USB mic with no
+    // driver FX; LFX/GFX is what Equalizer APO settled on because it loads everywhere.
+    private const string LfxValue = "{d04e05a6-594b-4fb6-a80d-01af5eed7d1d},1";
+    private const string GfxValue = "{d04e05a6-594b-4fb6-a80d-01af5eed7d1d},2";
+
+    // SFX/MFX/EFX: if any is present, Windows ignores LFX/GFX, so they must be absent.
+    private static readonly string[] ModernValues =
+    [
+        "{d04e05a6-594b-4fb6-a80d-01af5eed7d1d},5",
+        "{d04e05a6-594b-4fb6-a80d-01af5eed7d1d},6",
+        "{d04e05a6-594b-4fb6-a80d-01af5eed7d1d},7",
+    ];
 
     // PKEY_AudioEndpoint_Disable_SysFx: 1 = "Audio enhancements" off, which would bypass the APO.
     private const string DisableSysFxValue = "{1da5d803-d492-4edd-8c23-e0c0ffee7f0e},5";
@@ -57,38 +66,40 @@ public static class ApoAttachment
 
         using (var fx = hklm.OpenSubKey(fxPath))
         {
-            var currentEfx = fx?.GetValue(EfxValue) as string;
-            if (IsOurs(currentEfx)) return; // already attached
-
-            if (!string.IsNullOrEmpty(currentEfx) && !replaceExisting)
+            var foreign = new[] { LfxValue, GfxValue }.Concat(ModernValues)
+                .Select(name => fx?.GetValue(name) as string)
+                .FirstOrDefault(v => !string.IsNullOrEmpty(v) && !IsOurs(v));
+            if (foreign is not null && !replaceExisting)
                 throw new SlotOccupiedException(
-                    $"The endpoint effect slot is already used by {currentEfx} (likely a vendor effect). " +
+                    $"An effect slot on this mic is already used by {foreign} (likely a vendor effect). " +
                     "Re-run with --replace to override it; the original is restored on detach.");
 
-            // An existing backup means an earlier attach did not finish. It still holds the
-            // true original state, so keep it rather than snapshotting a half-modified key.
-            if (!File.Exists(backupFile))
-            {
-                var backup = new Backup(
-                    DeviceId: deviceId,
-                    AclKeyPath: aclPath,
-                    OriginalSddl: RegistryOwnership.GetSddl(hklm, aclPath),
-                    Values: [Snapshot(fx, EfxValue), Snapshot(fx, DisableSysFxValue)]);
+            // An existing backup means an earlier attach did not finish (or used other slots). It
+            // holds the true original state, so keep it and only add values it lacks: we never
+            // wrote those, so their current state is still the original.
+            var backup = File.Exists(backupFile)
+                ? JsonSerializer.Deserialize<Backup>(File.ReadAllText(backupFile), JsonOptions)!
+                : new Backup(deviceId, aclPath, RegistryOwnership.GetSddl(hklm, aclPath), []);
+            foreach (var name in TouchedValues.Where(n => backup.Values.All(v => v.Name != n)))
+                backup.Values.Add(Snapshot(fx, name));
 
-                // Persist the backup before touching anything so a crash mid-way is recoverable.
-                Directory.CreateDirectory(BackupDir);
-                File.WriteAllText(backupFile, JsonSerializer.Serialize(backup, JsonOptions));
-            }
+            // Persist the backup before touching anything so a crash mid-way is recoverable.
+            Directory.CreateDirectory(BackupDir);
+            File.WriteAllText(backupFile, JsonSerializer.Serialize(backup, JsonOptions));
         }
 
         RegistryOwnership.EnsureWritable(hklm, aclPath);
 
         using (var fx = hklm.CreateSubKey(fxPath, writable: true))
         {
-            fx.SetValue(EfxValue, ApoClsid, RegistryValueKind.String);
+            foreach (var name in ModernValues) fx.DeleteValue(name, throwOnMissingValue: false);
+            fx.SetValue(LfxValue, ApoClsid, RegistryValueKind.String);
+            fx.SetValue(GfxValue, ApoClsid, RegistryValueKind.String);
             fx.SetValue(DisableSysFxValue, 0, RegistryValueKind.DWord);
         }
     }
+
+    private static readonly string[] TouchedValues = [LfxValue, GfxValue, .. ModernValues, DisableSysFxValue];
 
     public static void Detach(string deviceId)
     {
@@ -124,7 +135,7 @@ public static class ApoAttachment
         if (value.Kind is null)
         {
             // Value did not exist before; remove only what we wrote.
-            if (value.Name != EfxValue || IsOurs(fx.GetValue(value.Name)))
+            if (value.Name == DisableSysFxValue || IsOurs(fx.GetValue(value.Name)))
                 fx.DeleteValue(value.Name, throwOnMissingValue: false);
             return;
         }

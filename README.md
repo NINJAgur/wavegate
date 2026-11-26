@@ -93,13 +93,13 @@ WaveGate.Installer detach "{0.0.1.00000000}.{...}"
 WaveGate.Installer unregister "C:\Program Files\WaveGate\WaveGateApo.dll"
 ```
 
-`attach` writes a backup to `%ProgramData%\WaveGate\backup\{endpoint}.json` before changing anything. The backup holds the original EFX value, the enhancements toggle and the key's security descriptor. `detach` restores all three and renames the backup to `*.restored-<timestamp>.json`.
+`attach` writes a backup to `%ProgramData%\WaveGate\backup\{endpoint}.json` before changing anything. The backup holds the original values of every FX slot it touches, the enhancements toggle and the key's security descriptor. `detach` restores them and renames the backup to `*.restored-<timestamp>.json`.
 
 ## Known limits / open questions
 
-- The APO uses the **EFX** slot (`{d04e05a6-…},7`). If a vendor driver already uses that slot, `--replace` disables the vendor effect while WaveGate is attached. Win11 CompositeFX chaining would avoid this but is not implemented yet.
+- The APO goes in the legacy **LFX/GFX** slots (`{d04e05a6-…},1` and `,2`). Windows 11 never loaded it from EFX (`,7`) on a USB mic with no driver effects, even though the same DLL works when called directly. LFX/GFX are ignored whenever SFX/MFX/EFX are set, so attach clears those. If a vendor effect occupies any of these slots, `--replace` disables it while WaveGate is attached; detach restores it.
 - Unsigned APOs may be blocked on some systems or by some anti-cheat. Plan to code-sign the DLL before release.
 - The shared ring grants read/write to Interactive Users. This means any local process in your session could inject audio into the mic while WaveGate is attached.
 - The sidetone stream is rebuilt after mic setup, but not when the default headphone device changes or is unplugged. Restart WaveGate in that case.
 - The tray uses a stock Windows icon until the project gets its own `.ico`.
-- All four projects build cleanly, and the overlay launches. The APO has not yet been registered or loaded by audiodg, and nothing has been tested end to end.
+- Verified on Windows 11 23H2 with a HyperX Cloud III (USB, inbox driver): audiodg loads the APO, and a tone written to the ring came out of the mic capture at the expected level. The full overlay-to-mic path (clip playback through `SoundEngine`) has not been tested yet.
