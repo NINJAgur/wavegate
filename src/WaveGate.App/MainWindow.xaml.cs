@@ -1,5 +1,6 @@
 using System.Collections.Specialized;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Windows;
@@ -7,6 +8,8 @@ using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Interop;
+using System.Windows.Media;
+using System.Windows.Media.Animation;
 using WaveGate.Overlay.Config;
 
 namespace WaveGate.Overlay;
@@ -25,6 +28,7 @@ public partial class MainWindow : Window
     public MainWindow(IBoard board)
     {
         InitializeComponent();
+        WindowTheme.FadeInOnShow(this);
         _board = board;
 
         _view = new ListCollectionView(board.Clips) { Filter = Matches };
@@ -151,9 +155,9 @@ public partial class MainWindow : Window
         SnapToEdge(animate: true, pickEdge: true);
     }
 
-    // ---- Corner anchoring --------------------------------------------------
-    // The overlay always rests in a corner of the monitor it is on. Dragging moves it freely;
-    // on release it glides to the nearest corner, and it stays pinned there as its height changes.
+    // ---- Edge anchoring ----------------------------------------------------
+    // The overlay always rests against an edge of the monitor it is on. Dragging moves it freely;
+    // on release it glides to the nearest edge, reshaping its tiles to suit, and stays pinned as its size changes.
 
     private const double SnapMargin = 12;
 
@@ -172,20 +176,67 @@ public partial class MainWindow : Window
     private enum Edge { Left, Right, Top, Bottom }
 
     private const int VisibleClips = 4;
+    private const double TileMargin = 4; // 2 on each side
+    private static readonly Size PortraitTile = new(76, 88), LandscapeTile = new(104, 56);
     private Edge _edge = Edge.Right;
 
-    /// <summary>Side edges get a column of tiles, top/bottom edges a row; about four fit before scrolling.</summary>
-    private void ApplyOrientation()
+    public static readonly DependencyProperty TileWidthProperty = DependencyProperty.Register(
+        nameof(TileWidth), typeof(double), typeof(MainWindow),
+        new PropertyMetadata(PortraitTile.Width, (d, _) => ((MainWindow)d).OnTileSizeChanged()));
+
+    public static readonly DependencyProperty TileHeightProperty = DependencyProperty.Register(
+        nameof(TileHeight), typeof(double), typeof(MainWindow),
+        new PropertyMetadata(PortraitTile.Height, (d, _) => ((MainWindow)d).OnTileSizeChanged()));
+
+    public static readonly DependencyProperty TextWidthProperty = DependencyProperty.Register(
+        nameof(TextWidth), typeof(double), typeof(MainWindow), new PropertyMetadata(PortraitTile.Width - 12));
+
+    public double TileWidth { get => (double)GetValue(TileWidthProperty); set => SetValue(TileWidthProperty, value); }
+    public double TileHeight { get => (double)GetValue(TileHeightProperty); set => SetValue(TileHeightProperty, value); }
+    public double TextWidth { get => (double)GetValue(TextWidthProperty); set => SetValue(TextWidthProperty, value); }
+
+    private bool Vertical => _edge is Edge.Left or Edge.Right;
+
+    private void OnTileSizeChanged()
     {
-        bool vertical = _edge is Edge.Left or Edge.Right;
+        TextWidth = TileWidth - 12;
+        Scroller.MaxHeight = Vertical ? VisibleClips * (TileHeight + TileMargin) : double.PositiveInfinity;
+        Scroller.MaxWidth = Vertical ? double.PositiveInfinity : VisibleClips * (TileWidth + TileMargin);
+    }
+
+    /// <summary>Side edges get a column of portrait tiles, top/bottom edges a row of landscape ones.</summary>
+    private void ApplyOrientation(bool animate = false)
+    {
         var panel = new FrameworkElementFactory(typeof(StackPanel));
-        panel.SetValue(StackPanel.OrientationProperty, vertical ? Orientation.Vertical : Orientation.Horizontal);
+        panel.SetValue(StackPanel.OrientationProperty, Vertical ? Orientation.Vertical : Orientation.Horizontal);
         ClipList.ItemsPanel = new ItemsPanelTemplate(panel);
-        Scroller.VerticalScrollBarVisibility = vertical ? ScrollBarVisibility.Hidden : ScrollBarVisibility.Disabled;
-        Scroller.HorizontalScrollBarVisibility = vertical ? ScrollBarVisibility.Disabled : ScrollBarVisibility.Hidden;
-        Scroller.MaxHeight = vertical ? VisibleClips * 44 : double.PositiveInfinity;
-        Scroller.MaxWidth = vertical ? double.PositiveInfinity : VisibleClips * 88;
-        SourceTitle.Visibility = vertical ? Visibility.Collapsed : Visibility.Visible;
+        Scroller.VerticalScrollBarVisibility = Vertical ? ScrollBarVisibility.Hidden : ScrollBarVisibility.Disabled;
+        Scroller.HorizontalScrollBarVisibility = Vertical ? ScrollBarVisibility.Disabled : ScrollBarVisibility.Hidden;
+        SourceTitle.Visibility = Vertical ? Visibility.Collapsed : Visibility.Visible;
+
+        var size = Vertical ? PortraitTile : LandscapeTile;
+        if (animate)
+        {
+            var duration = TimeSpan.FromMilliseconds(GlideMs);
+            var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
+            // FillBehavior.Stop with the base value set first, so the size stays put once the animation ends.
+            void Morph(DependencyProperty property, double to)
+            {
+                var from = (double)GetValue(property);
+                SetValue(property, to);
+                BeginAnimation(property, new DoubleAnimation(from, to, duration) { EasingFunction = ease, FillBehavior = FillBehavior.Stop });
+            }
+            Morph(TileWidthProperty, size.Width);
+            Morph(TileHeightProperty, size.Height);
+        }
+        else
+        {
+            BeginAnimation(TileWidthProperty, null);
+            BeginAnimation(TileHeightProperty, null);
+            TileWidth = size.Width;
+            TileHeight = size.Height;
+        }
+        OnTileSizeChanged();
     }
 
     private void OnScrollerWheel(object sender, MouseWheelEventArgs e)
@@ -196,53 +247,76 @@ public partial class MainWindow : Window
         e.Handled = true;
     }
 
+    private const double GlideMs = 260;
+    private readonly Stopwatch _glide = new();
+    private Point _glideFrom;
+
     public void SnapToEdge(bool animate, bool pickEdge = false)
     {
-        var hwnd = new WindowInteropHelper(this).Handle;
-        if (hwnd == IntPtr.Zero || PresentationSource.FromVisual(this)?.CompositionTarget is not { } target) return;
-
-        var info = new MONITORINFO { cbSize = Marshal.SizeOf<MONITORINFO>() };
-        if (!GetMonitorInfo(MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST), ref info)) return;
-
-        var toDip = target.TransformFromDevice;
-        var topLeft = toDip.Transform(new Point(info.rcWork.Left, info.rcWork.Top));
-        var bottomRight = toDip.Transform(new Point(info.rcWork.Right, info.rcWork.Bottom));
+        if (WorkArea() is not { } work) return;
 
         if (pickEdge)
         {
-            double dl = Left - topLeft.X, dr = bottomRight.X - (Left + ActualWidth);
-            double dt = Top - topLeft.Y, db = bottomRight.Y - (Top + ActualHeight);
+            double dl = Left - work.Left, dr = work.Right - (Left + ActualWidth);
+            double dt = Top - work.Top, db = work.Bottom - (Top + ActualHeight);
             double min = Math.Min(Math.Min(dl, dr), Math.Min(dt, db));
-            _edge = min == dl ? Edge.Left : min == dr ? Edge.Right : min == dt ? Edge.Top : Edge.Bottom;
-            ApplyOrientation();
-            UpdateLayout(); // so ActualWidth/Height reflect the new row/column shape
+            var edge = min == dl ? Edge.Left : min == dr ? Edge.Right : min == dt ? Edge.Top : Edge.Bottom;
+            bool reshape = (edge is Edge.Left or Edge.Right) != Vertical;
+            _edge = edge;
+            if (reshape) ApplyOrientation(animate);
+            if (!animate) UpdateLayout(); // so ActualWidth/Height reflect the new shape
         }
 
-        double minX = topLeft.X + SnapMargin, maxX = Math.Max(minX, bottomRight.X - ActualWidth - SnapMargin);
-        double minY = topLeft.Y + SnapMargin, maxY = Math.Max(minY, bottomRight.Y - ActualHeight - SnapMargin);
-        double x = _edge switch { Edge.Left => minX, Edge.Right => maxX, _ => Math.Clamp(Left, minX, maxX) };
-        double y = _edge switch { Edge.Top => minY, Edge.Bottom => maxY, _ => Math.Clamp(Top, minY, maxY) };
-
-        if (!animate)
+        if (animate)
         {
-            BeginAnimation(LeftProperty, null);
-            BeginAnimation(TopProperty, null);
-            Left = x;
-            Top = y;
+            // The tiles morph at the same time, so the target is recomputed every frame from the live size.
+            _glideFrom = new Point(Left, Top);
+            _glide.Restart();
+            CompositionTarget.Rendering -= OnGlideFrame;
+            CompositionTarget.Rendering += OnGlideFrame;
             return;
         }
+        if (_glide.IsRunning) return; // the running glide already tracks size changes
 
-        var ease = new System.Windows.Media.Animation.CubicEase { EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut };
-        var duration = TimeSpan.FromMilliseconds(220);
-        // FillBehavior.Stop + setting the base value first: when the animation ends the window stays put.
-        var fromX = Left;
-        var fromY = Top;
-        Left = x;
-        Top = y;
-        BeginAnimation(LeftProperty, new System.Windows.Media.Animation.DoubleAnimation(fromX, x, duration)
-            { EasingFunction = ease, FillBehavior = System.Windows.Media.Animation.FillBehavior.Stop });
-        BeginAnimation(TopProperty, new System.Windows.Media.Animation.DoubleAnimation(fromY, y, duration)
-            { EasingFunction = ease, FillBehavior = System.Windows.Media.Animation.FillBehavior.Stop });
+        var spot = Anchor(work);
+        Left = spot.X;
+        Top = spot.Y;
+    }
+
+    private void OnGlideFrame(object? sender, EventArgs e)
+    {
+        if (WorkArea() is not { } work) return;
+        double t = Math.Min(1, _glide.Elapsed.TotalMilliseconds / GlideMs);
+        double k = 1 - Math.Pow(1 - t, 3); // cubic ease-out
+        var to = Anchor(work);
+        Left = _glideFrom.X + (to.X - _glideFrom.X) * k;
+        Top = _glideFrom.Y + (to.Y - _glideFrom.Y) * k;
+        if (t < 1) return;
+        _glide.Reset();
+        CompositionTarget.Rendering -= OnGlideFrame;
+    }
+
+    /// <summary>Where the window rests on its edge, keeping its position along that edge.</summary>
+    private Point Anchor(Rect work)
+    {
+        double minX = work.Left + SnapMargin, maxX = Math.Max(minX, work.Right - ActualWidth - SnapMargin);
+        double minY = work.Top + SnapMargin, maxY = Math.Max(minY, work.Bottom - ActualHeight - SnapMargin);
+        double x = _edge switch { Edge.Left => minX, Edge.Right => maxX, _ => Math.Clamp(Left, minX, maxX) };
+        double y = _edge switch { Edge.Top => minY, Edge.Bottom => maxY, _ => Math.Clamp(Top, minY, maxY) };
+        return new Point(x, y);
+    }
+
+    private Rect? WorkArea()
+    {
+        var hwnd = new WindowInteropHelper(this).Handle;
+        if (hwnd == IntPtr.Zero || PresentationSource.FromVisual(this)?.CompositionTarget is not { } target) return null;
+
+        var info = new MONITORINFO { cbSize = Marshal.SizeOf<MONITORINFO>() };
+        if (!GetMonitorInfo(MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST), ref info)) return null;
+
+        var toDip = target.TransformFromDevice;
+        return new Rect(toDip.Transform(new Point(info.rcWork.Left, info.rcWork.Top)),
+                        toDip.Transform(new Point(info.rcWork.Right, info.rcWork.Bottom)));
     }
 
     private const uint MONITOR_DEFAULTTONEAREST = 2;

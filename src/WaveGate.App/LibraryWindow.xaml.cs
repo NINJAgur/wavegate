@@ -35,6 +35,7 @@ public partial class LibraryWindow : Window
     {
         InitializeComponent();
         WindowTheme.ApplyDark(this);
+        WindowTheme.FadeInOnShow(this);
         _board = board;
 
         _view = new ListCollectionView(board.Clips) { Filter = Matches };

@@ -39,6 +39,19 @@ public sealed class ClipColorConverter : IValueConverter
 /// <summary>Win11 dark title bar coloured like the window body, so the native frame blends in.</summary>
 public static class WindowTheme
 {
+    /// <summary>Content fades and slides up slightly each time the window is shown.</summary>
+    public static void FadeInOnShow(Window window) => window.IsVisibleChanged += (_, e) =>
+    {
+        if (e.NewValue is not true || window.Content is not UIElement content) return;
+        var slide = new TranslateTransform();
+        content.RenderTransform = slide;
+        var ease = new System.Windows.Media.Animation.CubicEase { EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut };
+        var duration = TimeSpan.FromMilliseconds(220);
+        content.BeginAnimation(UIElement.OpacityProperty, new System.Windows.Media.Animation.DoubleAnimation(0, 1, duration));
+        slide.BeginAnimation(TranslateTransform.YProperty,
+            new System.Windows.Media.Animation.DoubleAnimation(8, 0, duration) { EasingFunction = ease });
+    };
+
     public static void ApplyDark(Window window) => window.SourceInitialized += (_, _) =>
     {
         var hwnd = new WindowInteropHelper(window).Handle;

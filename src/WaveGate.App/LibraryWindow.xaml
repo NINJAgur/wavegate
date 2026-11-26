@@ -15,25 +15,40 @@
             <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="RenderTransformOrigin" Value="0.5,0.5" />
+            <Setter Property="RenderTransform">
+                <Setter.Value>
+                    <ScaleTransform />
+                </Setter.Value>
+            </Setter>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
                         <Border x:Name="Bg" CornerRadius="14" ClipToBounds="True" BorderThickness="1"
-                                Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrush}"
-                                RenderTransformOrigin="0.5,0.5">
+                                Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrush}">
                             <ContentPresenter />
                         </Border>
                         <ControlTemplate.Triggers>
+                            <EventTrigger RoutedEvent="Loaded">
+                                <BeginStoryboard Storyboard="{StaticResource PopIn}" />
+                            </EventTrigger>
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter TargetName="Bg" Property="Background" Value="{StaticResource HoverBrush}" />
                                 <Setter TargetName="Bg" Property="BorderBrush" Value="#4A4A66" />
+                                <Trigger.EnterActions>
+                                    <BeginStoryboard Storyboard="{StaticResource Grow}" />
+                                </Trigger.EnterActions>
+                                <Trigger.ExitActions>
+                                    <BeginStoryboard Storyboard="{StaticResource Rest}" />
+                                </Trigger.ExitActions>
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="Bg" Property="RenderTransform">
-                                    <Setter.Value>
-                                        <ScaleTransform ScaleX="0.97" ScaleY="0.97" />
-                                    </Setter.Value>
-                                </Setter>
+                                <Trigger.EnterActions>
+                                    <BeginStoryboard Storyboard="{StaticResource Press}" />
+                                </Trigger.EnterActions>
+                                <Trigger.ExitActions>
+                                    <BeginStoryboard Storyboard="{StaticResource Grow}" />
+                                </Trigger.ExitActions>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>

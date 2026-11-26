@@ -9,11 +9,18 @@
 
     <Window.Resources>
         <Style x:Key="ClipButton" TargetType="Button">
-            <Setter Property="Width" Value="84" />
-            <Setter Property="Height" Value="40" />
+            <Setter Property="Width" Value="{Binding TileWidth, RelativeSource={RelativeSource AncestorType=Window}}" />
+            <Setter Property="Height" Value="{Binding TileHeight, RelativeSource={RelativeSource AncestorType=Window}}" />
             <Setter Property="Margin" Value="2" />
             <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
             <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="RenderTransformOrigin" Value="0.5,0.5" />
+            <Setter Property="RenderTransform">
+                <Setter.Value>
+                    <ScaleTransform />
+                </Setter.Value>
+            </Setter>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
@@ -22,11 +29,26 @@
                             <ContentPresenter />
                         </Border>
                         <ControlTemplate.Triggers>
+                            <EventTrigger RoutedEvent="Loaded">
+                                <BeginStoryboard Storyboard="{StaticResource PopIn}" />
+                            </EventTrigger>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bg" Property="Background" Value="{StaticResource HoverBrush}" />
+                                <Setter TargetName="Bg" Property="BorderBrush" Value="#4A4A66" />
+                                <Trigger.EnterActions>
+                                    <BeginStoryboard Storyboard="{StaticResource Grow}" />
+                                </Trigger.EnterActions>
+                                <Trigger.ExitActions>
+                                    <BeginStoryboard Storyboard="{StaticResource Rest}" />
+                                </Trigger.ExitActions>
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
                                 <Setter TargetName="Bg" Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+                                <Trigger.EnterActions>
+                                    <BeginStoryboard Storyboard="{StaticResource Press}" />
+                                </Trigger.EnterActions>
+                                <Trigger.ExitActions>
+                                    <BeginStoryboard Storyboard="{StaticResource Grow}" />
+                                </Trigger.ExitActions>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -85,9 +107,10 @@
                                         <Border Width="3" HorizontalAlignment="Left"
                                                 Background="{Binding Name, Converter={StaticResource ClipColor}}" />
                                         <!-- Long names wrap to two lines, then shrink to fit rather than being cut off. -->
-                                        <Viewbox StretchDirection="DownOnly" Margin="7,3,4,3">
-                                            <TextBlock Text="{Binding Name}" Width="72" TextWrapping="Wrap" TextAlignment="Center"
-                                                       FontWeight="SemiBold" />
+                                        <Viewbox StretchDirection="DownOnly" Margin="7,4,4,4">
+                                            <TextBlock Text="{Binding Name}" TextWrapping="Wrap" TextAlignment="Center"
+                                                       Width="{Binding TextWidth, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                       FontWeight="SemiBold" FontSize="12" />
                                         </Viewbox>
                                         <Border Height="2" VerticalAlignment="Bottom" RenderTransformOrigin="0,0.5"
                                                 Background="{Binding Name, Converter={StaticResource ClipColor}}">

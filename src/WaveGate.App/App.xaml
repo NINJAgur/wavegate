@@ -22,6 +22,33 @@
         <SolidColorBrush x:Key="MutedBrush" Color="#8A8FA0" />
         <SolidColorBrush x:Key="StarBrush" Color="#FFC53D" />
 
+        <!-- Shared motion. Each targets the element's own ScaleTransform RenderTransform. -->
+        <CubicEase x:Key="EaseOut" EasingMode="EaseOut" />
+        <Storyboard x:Key="Grow">
+            <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)" To="1.04"
+                             Duration="0:0:0.14" EasingFunction="{StaticResource EaseOut}" />
+            <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)" To="1.04"
+                             Duration="0:0:0.14" EasingFunction="{StaticResource EaseOut}" />
+        </Storyboard>
+        <Storyboard x:Key="Rest">
+            <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)" To="1"
+                             Duration="0:0:0.18" EasingFunction="{StaticResource EaseOut}" />
+            <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)" To="1"
+                             Duration="0:0:0.18" EasingFunction="{StaticResource EaseOut}" />
+        </Storyboard>
+        <Storyboard x:Key="Press">
+            <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)" To="0.94"
+                             Duration="0:0:0.07" EasingFunction="{StaticResource EaseOut}" />
+            <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)" To="0.94"
+                             Duration="0:0:0.07" EasingFunction="{StaticResource EaseOut}" />
+        </Storyboard>
+        <Storyboard x:Key="PopIn">
+            <DoubleAnimation Storyboard.TargetProperty="Opacity" From="0" To="1" Duration="0:0:0.22" />
+            <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)" From="0.85" To="1"
+                             Duration="0:0:0.26" EasingFunction="{StaticResource EaseOut}" />
+            <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)" From="0.85" To="1"
+                             Duration="0:0:0.26" EasingFunction="{StaticResource EaseOut}" />
+        </Storyboard>
         <!-- Buttons: content is usually a StackPanel with an icon glyph + label. -->
         <Style x:Key="WgButton" TargetType="Button">
             <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
@@ -30,6 +57,12 @@
             <Setter Property="Padding" Value="14,8" />
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="RenderTransformOrigin" Value="0.5,0.5" />
+            <Setter Property="RenderTransform">
+                <Setter.Value>
+                    <ScaleTransform />
+                </Setter.Value>
+            </Setter>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
@@ -44,6 +77,12 @@
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
                                 <Setter TargetName="Bg" Property="Opacity" Value="0.65" />
+                                <Trigger.EnterActions>
+                                    <BeginStoryboard Storyboard="{StaticResource Press}" />
+                                </Trigger.EnterActions>
+                                <Trigger.ExitActions>
+                                    <BeginStoryboard Storyboard="{StaticResource Rest}" />
+                                </Trigger.ExitActions>
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter TargetName="Bg" Property="Opacity" Value="0.4" />
@@ -66,6 +105,12 @@
             <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="FontFamily" Value="{StaticResource IconFont}" />
+            <Setter Property="RenderTransformOrigin" Value="0.5,0.5" />
+            <Setter Property="RenderTransform">
+                <Setter.Value>
+                    <ScaleTransform />
+                </Setter.Value>
+            </Setter>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
@@ -75,6 +120,14 @@
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter TargetName="Bg" Property="Background" Value="#22FFFFFF" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Trigger.EnterActions>
+                                    <BeginStoryboard Storyboard="{StaticResource Press}" />
+                                </Trigger.EnterActions>
+                                <Trigger.ExitActions>
+                                    <BeginStoryboard Storyboard="{StaticResource Rest}" />
+                                </Trigger.ExitActions>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
