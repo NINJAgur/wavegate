@@ -61,6 +61,18 @@ public sealed class SoundEngine : IDisposable
         lock (_voicesLock) return _voices.Any(v => v.Key == key);
     }
 
+    /// <summary>True when the clip has voices and all of them are paused.</summary>
+    public bool IsPaused(Guid key)
+    {
+        lock (_voicesLock) return _voices.Any(v => v.Key == key) && _voices.All(v => v.Key != key || v.Paused);
+    }
+
+    public void SetPaused(Guid key, bool paused)
+    {
+        lock (_voicesLock)
+            foreach (var v in _voices.Where(v => v.Key == key)) v.Paused = paused;
+    }
+
     public void Stop(Guid key)
     {
         Voice[] stopped;
@@ -150,8 +162,16 @@ public sealed class SoundEngine : IDisposable
 
         public WaveFormat WaveFormat => _pipeline.WaveFormat;
 
+        public volatile bool Paused;
+
         public int Read(float[] buffer, int offset, int count)
         {
+            // Silence rather than 0 while paused: returning 0 would make the mixer drop the voice.
+            if (Paused)
+            {
+                Array.Clear(buffer, offset, count);
+                return count;
+            }
             int read = _pipeline.Read(buffer, offset, count);
             Interlocked.Add(ref _samplesRead, read);
             return read;

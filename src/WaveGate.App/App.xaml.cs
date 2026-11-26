@@ -132,6 +132,46 @@ public partial class App : Application, IBoard
             return;
         }
 
+        if (_engine.IsPaused(clip.Id))
+        {
+            _pendingRetrigger = null;
+            _engine.SetPaused(clip.Id, false);
+            return;
+        }
+
+        if (_engine.IsPlaying(clip.Id))
+        {
+            // A second press within the double-click time pauses; otherwise the retrigger runs once it expires.
+            if (_pendingRetrigger == clip)
+            {
+                _pendingRetrigger = null;
+                _engine.SetPaused(clip.Id, true);
+                return;
+            }
+            if (_pendingRetrigger is { } other) Retrigger(other);
+            _pendingRetrigger = clip;
+            _retriggerTimer ??= new DispatcherTimer(TimeSpan.FromMilliseconds(System.Windows.Forms.SystemInformation.DoubleClickTime),
+                DispatcherPriority.Normal, (_, _) =>
+                {
+                    _retriggerTimer!.Stop();
+                    if (_pendingRetrigger is { } pending) Retrigger(pending);
+                }, Dispatcher);
+            _retriggerTimer.Stop();
+            _retriggerTimer.Start();
+            return;
+        }
+
+        StartVoice(clip, new PlayOptions(clip.Volume, clip.TrimStart, clip.TrimEnd));
+    }
+
+    private ClipEntry? _pendingRetrigger;
+    private DispatcherTimer? _retriggerTimer;
+
+    private void Retrigger(ClipEntry clip)
+    {
+        _pendingRetrigger = null;
+        if (_engine is null) return;
+
         if (_engine.IsPlaying(clip.Id))
         {
             switch (clip.Retrigger)
@@ -169,7 +209,11 @@ public partial class App : Application, IBoard
         }
     }
 
-    public void StopAll() => _engine?.StopAll();
+    public void StopAll()
+    {
+        _pendingRetrigger = null;
+        _engine?.StopAll();
+    }
 
     public float MicVolume
     {
