@@ -62,6 +62,7 @@ public partial class App : Application, IBoard
         // Boards from before favorites existed would otherwise open to an empty overlay.
         if (_config.OverlaySource is null && Clips.Count > 0 && !Clips.Any(c => c.Favorite)) _config.OverlaySource = "";
         Clips.CollectionChanged += (_, _) => ScheduleSave();
+        Analyze([.. Clips]);
         Categories.CollectionChanged += (_, _) => ScheduleSave();
 
         _saveTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
@@ -326,6 +327,7 @@ public partial class App : Application, IBoard
         foreach (var clip in Clips)
         {
             bool playing = progress.TryGetValue(clip.Id, out var p);
+            clip.Playing = playing;
             clip.Paused = playing && _engine!.IsPaused(clip.Id);
             if (clip.Scrubbing) continue;
             if (playing) clip.Progress = p;
@@ -420,6 +422,7 @@ public partial class App : Application, IBoard
                     Categories.Add(fileCategory);
                 clip.PropertyChanged += OnClipChanged;
                 Clips.Add(clip);
+                Analyze([clip]);
                 added++;
             }
             catch (IOException ex)
@@ -500,7 +503,28 @@ public partial class App : Application, IBoard
 
     private void OnClipChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName is not (nameof(ClipEntry.Progress) or nameof(ClipEntry.Paused))) ScheduleSave();
+        if (!ClipEntry.IsTransient(e.PropertyName)) ScheduleSave();
+        if (e.PropertyName is nameof(ClipEntry.TrimStart) or nameof(ClipEntry.TrimEnd) && sender is ClipEntry clip) Analyze([clip]);
+    }
+
+    /// <summary>Works out each clip's waveform and length off the UI thread, one file at a time.</summary>
+    private void Analyze(IReadOnlyList<ClipEntry> clips)
+    {
+        var jobs = clips.Select(c => (Clip: c, Path: _store.ClipPath(c), Options: new PlayOptions(c.Volume, c.TrimStart, c.TrimEnd))).ToList();
+        Task.Run(() =>
+        {
+            foreach (var (clip, path, options) in jobs)
+            {
+                WaveformInfo info;
+                try { info = Waveform.Analyze(path, options); }
+                catch (Exception) { continue; } // missing or undecodable file: the tile just shows no waveform
+                Dispatcher.BeginInvoke(() =>
+                {
+                    clip.Peaks = info.Peaks;
+                    clip.Duration = info.Length;
+                });
+            }
+        });
     }
 
     // ---- Hotkeys -----------------------------------------------------------

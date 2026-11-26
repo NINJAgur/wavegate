@@ -15,10 +15,18 @@ public sealed class ClipColorConverter : IValueConverter
         var name = value as string ?? "";
         uint hash = 2166136261;
         foreach (var ch in name) hash = (hash ^ ch) * 16777619;
-        var color = FromHsl(hash % 360, 0.62, 0.62);
-        return parameter as string == "soft"
-            ? new SolidColorBrush(Color.FromArgb(0x26, color.R, color.G, color.B))
-            : new SolidColorBrush(color);
+        double hue = hash % 360;
+        var color = FromHsl(hue, 0.62, 0.62);
+        return (parameter as string) switch
+        {
+            "soft" => new SolidColorBrush(Color.FromArgb(0x26, color.R, color.G, color.B)),
+            "dim" => new SolidColorBrush(Color.FromArgb(0x80, color.R, color.G, color.B)),
+            "tint" => new SolidColorBrush(FromHsl(hue, 0.40, 0.14)), // playing tile background
+            "deep" => new SolidColorBrush(FromHsl(hue, 0.30, 0.13)), // overlay tile background
+            "bright" => new SolidColorBrush(FromHsl(hue, 0.70, 0.74)), // readable text on dark
+            "color" => color,
+            _ => new SolidColorBrush(color),
+        };
     }
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) =>

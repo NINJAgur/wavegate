@@ -58,6 +58,10 @@ public sealed class ClipEntry : INotifyPropertyChanged
     private double? _trimEnd;
     private double _progress;
     private bool _paused;
+    private bool _playing;
+    private float[]? _peaks;
+    private TimeSpan? _duration;
+    private string _status = "";
 
     public Guid Id { get; set; } = Guid.NewGuid();
 
@@ -84,11 +88,41 @@ public sealed class ClipEntry : INotifyPropertyChanged
 
     /// <summary>Playback position 0..1 for the tile's progress bar; not saved.</summary>
     [JsonIgnore]
-    public double Progress { get => _progress; set => Set(ref _progress, value); }
+    public double Progress { get => _progress; set { Set(ref _progress, value); UpdateStatus(); } }
 
     /// <summary>Playing but paused, for the tile's paused look; not saved.</summary>
     [JsonIgnore]
-    public bool Paused { get => _paused; set => Set(ref _paused, value); }
+    public bool Paused { get => _paused; set { Set(ref _paused, value); UpdateStatus(); } }
+
+    /// <summary>Has a voice in the engine (paused or not); not saved.</summary>
+    [JsonIgnore]
+    public bool Playing { get => _playing; set { Set(ref _playing, value); UpdateStatus(); } }
+
+    /// <summary>Loudness shape of the trimmed clip for the tile; computed in the background, not saved.</summary>
+    [JsonIgnore]
+    public float[]? Peaks { get => _peaks; set => Set(ref _peaks, value); }
+
+    /// <summary>Length of the trimmed clip, once analysed; not saved.</summary>
+    [JsonIgnore]
+    public TimeSpan? Duration { get => _duration; set { Set(ref _duration, value); UpdateStatus(); } }
+
+    /// <summary>The tile's time line: length when idle, elapsed/length while playing.</summary>
+    [JsonIgnore]
+    public string Status { get => _status; private set => Set(ref _status, value); }
+
+    /// <summary>Properties that only reflect playback or analysis, so changing them is not a config change.</summary>
+    public static bool IsTransient(string? property) => property is nameof(Progress) or nameof(Paused) or nameof(Playing)
+        or nameof(Peaks) or nameof(Duration) or nameof(Status);
+
+    private void UpdateStatus()
+    {
+        static string Time(TimeSpan t) => t.TotalHours >= 1 ? t.ToString(@"h\:mm\:ss") : t.ToString(@"m\:ss");
+        var elapsed = TimeSpan.FromSeconds((_duration?.TotalSeconds ?? 0) * _progress);
+        Status = _duration is not { } length ? ""
+            : _paused ? $"Paused · {Time(elapsed)}"
+            : _playing ? $"{Time(elapsed)} / {Time(length)}"
+            : Time(length);
+    }
 
     /// <summary>True while the user drags the seek bar, so playback updates don't fight the drag.</summary>
     [JsonIgnore]

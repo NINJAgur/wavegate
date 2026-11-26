@@ -140,7 +140,7 @@ public sealed class SoundEngine : IDisposable
         return reader.TotalTime;
     }
 
-    private static WaveStream OpenReader(string path) =>
+    internal static WaveStream OpenReader(string path) =>
         Path.GetExtension(path).Equals(".ogg", StringComparison.OrdinalIgnoreCase)
             ? new VorbisWaveReader(path)
             : new AudioFileReader(path); // WAV, MP3; MP4/M4A go through Media Foundation (audio track only)

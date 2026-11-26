@@ -64,6 +64,7 @@ public partial class MainWindow : Window
             : _board.OverlaySource is null ? "Star sounds in the Library to show them here"
             : "Nothing in this category yet";
         EmptyHint.Visibility = _view.IsEmpty ? Visibility.Visible : Visibility.Collapsed;
+        CountText.Text = $"· {_view.Count}";
     }
 
     protected override void OnSourceInitialized(EventArgs e)
@@ -160,7 +161,14 @@ public partial class MainWindow : Window
 
     private void UpdateShareButton()
     {
-        ShareButton.Foreground = _board.Sharing ? (Brush)FindResource("AccentBrush") : (Brush)FindResource("MutedBrush");
+        var on = _board.Sharing;
+        ShareButton.Background = on ? (Brush)FindResource("AccentBrush") : Brushes.Transparent;
+        ShareButton.Foreground = on ? Brushes.White : (Brush)FindResource("MutedBrush");
+        // The app's name fits beside the mic only on the wide top/bottom layout.
+        bool named = on && !Vertical;
+        ShareName.Text = _board.ShareSource;
+        ShareName.Visibility = named ? Visibility.Visible : Visibility.Collapsed;
+        ShareButton.Padding = named ? new Thickness(7, 0, 9, 0) : new Thickness(0);
         ShareButton.ToolTip = _board.ShareSource is { } source
             ? _board.Sharing ? $"Sharing {source} into your mic. Click to stop, right-click to change."
                              : $"Click to send {source} into your mic. Right-click to change."
@@ -218,11 +226,18 @@ public partial class MainWindow : Window
     public double TileHeight { get => (double)GetValue(TileHeightProperty); set => SetValue(TileHeightProperty, value); }
     public double TextWidth { get => (double)GetValue(TextWidthProperty); set => SetValue(TextWidthProperty, value); }
 
+    public static readonly DependencyProperty IsPortraitProperty = DependencyProperty.Register(
+        nameof(IsPortrait), typeof(bool), typeof(MainWindow), new PropertyMetadata(true));
+
+    /// <summary>Tiles lay out for a side edge (tall) rather than a top/bottom edge (wide).</summary>
+    public bool IsPortrait { get => (bool)GetValue(IsPortraitProperty); set => SetValue(IsPortraitProperty, value); }
+
     private bool Vertical => _edge is Edge.Left or Edge.Right;
 
     private void OnTileSizeChanged()
     {
-        TextWidth = TileWidth - 16;
+        // Inside the tile's padding; the wide layout also leaves room for the pause badge.
+        TextWidth = Math.Max(20, TileWidth - (IsPortrait ? 20 : 38));
         Scroller.MaxHeight = Vertical ? VisibleClips * (TileHeight + TileMargin) : double.PositiveInfinity;
         Scroller.MaxWidth = Vertical ? double.PositiveInfinity : VisibleClips * (TileWidth + TileMargin);
     }
@@ -235,7 +250,9 @@ public partial class MainWindow : Window
         ClipList.ItemsPanel = new ItemsPanelTemplate(panel);
         Scroller.VerticalScrollBarVisibility = Vertical ? ScrollBarVisibility.Hidden : ScrollBarVisibility.Disabled;
         Scroller.HorizontalScrollBarVisibility = Vertical ? ScrollBarVisibility.Disabled : ScrollBarVisibility.Hidden;
-        SourceTitle.Visibility = Vertical ? Visibility.Collapsed : Visibility.Visible;
+        SourceTitle.Visibility = CountText.Visibility = Grip.Visibility = Vertical ? Visibility.Collapsed : Visibility.Visible;
+        IsPortrait = Vertical;
+        UpdateShareButton();
 
         var size = Vertical ? PortraitTile : LandscapeTile;
         if (animate)

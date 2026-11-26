@@ -9,6 +9,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using Microsoft.Win32;
 using WaveGate.Overlay.Config;
+using WaveGate.Overlay.Setup;
 
 namespace WaveGate.Overlay;
 
@@ -61,8 +62,35 @@ public partial class LibraryWindow : Window
     public void SetMicStatus(MicStatus status)
     {
         var (brush, text) = MicStatusText.Describe(status);
-        MicDot.Fill = brush;
-        MicText.Text = text;
+        MicDot.Fill = MicHalo.Fill = brush;
+        MicTitle.Text = status switch
+        {
+            MicStatus.Live => "Live in your mic",
+            MicStatus.Waiting => "Waiting for an app to use your mic",
+            _ => "No mic set up",
+        };
+        MicTitle.ToolTip = text;
+        MicDevice.Text = MicName() ?? (status == MicStatus.NotSetUp ? "Use the gear to pick one" : "");
+    }
+
+    private string? _micNameId, _micName;
+
+    /// <summary>Friendly name of the attached mic; looked up only when the device changes (this runs every second).</summary>
+    private string? MicName()
+    {
+        if (_board.MicDeviceId != _micNameId)
+        {
+            _micNameId = _board.MicDeviceId;
+            try
+            {
+                _micName = MicSetup.ListMicrophones().FirstOrDefault(m => m.Id == _micNameId)?.Name;
+            }
+            catch (Exception) // COM errors while the audio service restarts; try again next change
+            {
+                _micName = null;
+            }
+        }
+        return _micName;
     }
 
     protected override void OnClosing(CancelEventArgs e)
@@ -453,11 +481,14 @@ public partial class LibraryWindow : Window
     private void UpdateShareButton()
     {
         var on = _board.Sharing;
+        SharePill.Background = on ? new SolidColorBrush(Color.FromArgb(0x24, 0x7C, 0x5C, 0xFF)) : (Brush)FindResource("CardBrush");
+        SharePill.BorderBrush = on ? new SolidColorBrush(Color.FromArgb(0x73, 0x7C, 0x5C, 0xFF)) : (Brush)FindResource("BorderBrush");
         ShareToggle.Background = (Brush)FindResource(on ? "AccentBrush" : "InputBrush");
-        ShareToggle.BorderBrush = on ? new SolidColorBrush(Color.FromRgb(0xB8, 0xA6, 0xFF)) : (Brush)FindResource("BorderBrush");
+        ShareToggle.BorderBrush = on ? new SolidColorBrush(Color.FromArgb(0x50, 0xB8, 0xA6, 0xFF)) : (Brush)FindResource("BorderBrush");
         ShareToggle.Foreground = on ? Brushes.White : (Brush)FindResource("MutedBrush");
-        ShareLabel.Text = on ? $"Sharing {_board.ShareSource}" : "Not sharing";
-        ShareLabel.Foreground = (Brush)FindResource(on ? "TextBrush" : "MutedBrush");
+        ShareCaption.Text = on ? "Sharing" : "Not sharing";
+        ShareCaption.Foreground = on ? new SolidColorBrush(Color.FromRgb(0xB9, 0xAE, 0xFF)) : (Brush)FindResource("MutedBrush");
+        ShareLabel.Text = _board.ShareSource ?? "Choose an app";
         ShareToggle.ToolTip = _board.ShareSource is { } source
             ? on ? $"Others hear {source} through your mic. Click to stop." : $"Click to send {source} into your mic"
             : "Send what an app is playing (a YouTube tab, a clip on X…) into your mic";
