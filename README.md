@@ -107,8 +107,8 @@ WaveGate.Installer unregister "C:\Program Files\WaveGate\WaveGateApo.dll"
 ## Known limits / open questions
 
 - The APO goes in the legacy **LFX/GFX** slots (`{d04e05a6-…},1` and `,2`). Windows 11 never loaded it from EFX (`,7`) on a USB mic with no driver effects, even though the same DLL works when called directly. LFX/GFX are ignored whenever SFX/MFX/EFX are set, so attach clears those. If a vendor effect occupies any of these slots, `--replace` disables it while WaveGate is attached; detach restores it.
-- Unsigned APOs may be blocked on some systems or by some anti-cheat. Plan to code-sign the DLL before release.
+- The APO DLL and the setup exe are not code-signed. Windows SmartScreen warns on first run ("More info → Run anyway"), and some anti-cheat may refuse to let an unsigned DLL into the audio engine. Fixing this needs a code-signing certificate.
 - The shared ring grants read/write to Interactive Users. This means any local process in your session could inject audio into the mic while WaveGate is attached.
-- The sidetone stream is rebuilt after mic setup, but not when the default headphone device changes or is unplugged. Restart WaveGate in that case.
-- The tray uses a stock Windows icon until the project gets its own `.ico`.
-- Verified on Windows 11 23H2 with a HyperX Cloud III (USB, inbox driver): audiodg loads the APO, and a tone written to the ring came out of the mic capture at the expected level. The full overlay-to-mic path (clip playback through `SoundEngine`) has not been tested yet.
+- Changing the default output device moves the sidetone to the new device. Clips that are playing at that moment stop.
+- Each attach, detach or mic switch restarts the Windows audio service, which cuts all sound for a few seconds. WaveGate asks before doing it.
+- Verified on Windows 11 23H2 with a HyperX Cloud III (USB, inbox driver): clips and shared app audio reach the mic, and the sidetone follows default-device changes. Other mics, especially ones with vendor effects that need `--replace`, have not been tested.
