@@ -20,7 +20,7 @@ public partial class MainWindow : Window
     private readonly IBoard _board;
     private readonly ListCollectionView _view;
 
-    public event Action? HideClicked;
+    public event Action? ExitClicked;
 
     public MainWindow(IBoard board)
     {
@@ -49,7 +49,7 @@ public partial class MainWindow : Window
         _view.Refresh();
         SourceTitle.Text = _board.OverlaySource switch
         {
-            null => "★ Favorites",
+            null => "Favorites",
             "" => "All sounds",
             var name => name,
         };
@@ -141,12 +141,85 @@ public partial class MainWindow : Window
 
     private void OnStopAllClick(object sender, RoutedEventArgs e) => _board.StopAll();
 
-    private void OnHideClick(object sender, RoutedEventArgs e) => HideClicked?.Invoke();
+    private void OnExitClick(object sender, RoutedEventArgs e) => ExitClicked?.Invoke();
 
     private void OnHeaderMouseDown(object sender, MouseButtonEventArgs e)
     {
-        if (e.ButtonState == MouseButtonState.Pressed) DragMove();
+        if (e.ButtonState != MouseButtonState.Pressed) return;
+        DragMove(); // returns when the mouse is released
+        SnapToCorner(animate: true);
     }
+
+    // ---- Corner anchoring --------------------------------------------------
+    // The overlay always rests in a corner of the monitor it is on. Dragging moves it freely;
+    // on release it glides to the nearest corner, and it stays pinned there as its height changes.
+
+    private const double SnapMargin = 12;
+
+    protected override void OnContentRendered(EventArgs e)
+    {
+        base.OnContentRendered(e);
+        SnapToCorner(animate: false);
+    }
+
+    protected override void OnRenderSizeChanged(SizeChangedInfo info)
+    {
+        base.OnRenderSizeChanged(info);
+        if (IsLoaded) SnapToCorner(animate: false);
+    }
+
+    public void SnapToCorner(bool animate)
+    {
+        var hwnd = new WindowInteropHelper(this).Handle;
+        if (hwnd == IntPtr.Zero || PresentationSource.FromVisual(this)?.CompositionTarget is not { } target) return;
+
+        var info = new MONITORINFO { cbSize = Marshal.SizeOf<MONITORINFO>() };
+        if (!GetMonitorInfo(MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST), ref info)) return;
+
+        var toDip = target.TransformFromDevice;
+        var topLeft = toDip.Transform(new Point(info.rcWork.Left, info.rcWork.Top));
+        var bottomRight = toDip.Transform(new Point(info.rcWork.Right, info.rcWork.Bottom));
+
+        bool left = Left + ActualWidth / 2 < (topLeft.X + bottomRight.X) / 2;
+        bool top = Top + ActualHeight / 2 < (topLeft.Y + bottomRight.Y) / 2;
+        double x = left ? topLeft.X + SnapMargin : bottomRight.X - ActualWidth - SnapMargin;
+        double y = top ? topLeft.Y + SnapMargin : bottomRight.Y - ActualHeight - SnapMargin;
+
+        if (!animate)
+        {
+            BeginAnimation(LeftProperty, null);
+            BeginAnimation(TopProperty, null);
+            Left = x;
+            Top = y;
+            return;
+        }
+
+        var ease = new System.Windows.Media.Animation.CubicEase { EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut };
+        var duration = TimeSpan.FromMilliseconds(220);
+        // FillBehavior.Stop + setting the base value first: when the animation ends the window stays put.
+        var fromX = Left;
+        var fromY = Top;
+        Left = x;
+        Top = y;
+        BeginAnimation(LeftProperty, new System.Windows.Media.Animation.DoubleAnimation(fromX, x, duration)
+            { EasingFunction = ease, FillBehavior = System.Windows.Media.Animation.FillBehavior.Stop });
+        BeginAnimation(TopProperty, new System.Windows.Media.Animation.DoubleAnimation(fromY, y, duration)
+            { EasingFunction = ease, FillBehavior = System.Windows.Media.Animation.FillBehavior.Stop });
+    }
+
+    private const uint MONITOR_DEFAULTTONEAREST = 2;
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct RECT { public int Left, Top, Right, Bottom; }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MONITORINFO { public int cbSize; public RECT rcMonitor; public RECT rcWork; public uint dwFlags; }
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint flags);
+
+    [DllImport("user32.dll")]
+    private static extern bool GetMonitorInfo(IntPtr monitor, ref MONITORINFO info);
 
     private void OnDragOver(object sender, DragEventArgs e)
     {

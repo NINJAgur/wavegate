@@ -11,6 +11,7 @@ public sealed class TextPromptWindow : Window
 
     private TextPromptWindow(string title, string label, string initial)
     {
+        WindowTheme.ApplyDark(this);
         Title = title;
         Width = 340;
         SizeToContent = SizeToContent.Height;

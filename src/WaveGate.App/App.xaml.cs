@@ -77,9 +77,10 @@ public partial class App : Application, IBoard
 
         _window = new MainWindow(this);
         RestorePosition(_window);
-        _window.HideClicked += ToggleOverlay;
+        _window.ExitClicked += ExitApp;
 
         _library = new LibraryWindow(this);
+        _library.HiddenByUser += ShowOverlay;
 
         _hotkeys = new GlobalHotkeys(_window);
         RegisterHotkeys();
@@ -93,7 +94,7 @@ public partial class App : Application, IBoard
         _progressTimer.Tick += (_, _) => UpdateProgress();
         _progressTimer.Start();
 
-        _window.Show();
+        // One of the two is visible at a time: the library while managing, the overlay while playing.
         _library.Show();
     }
 
@@ -480,10 +481,17 @@ public partial class App : Application, IBoard
     public void ShowLibrary()
     {
         if (_library is null) return;
+        if (_window is { IsVisible: true })
+        {
+            SavePosition();
+            _window.Hide();
+        }
         _library.Show();
         if (_library.WindowState == WindowState.Minimized) _library.WindowState = WindowState.Normal;
         _library.Activate();
     }
+
+    private void ShowOverlay() => _window?.Show(); // WS_EX_NOACTIVATE: shows without taking focus
 
     private void ToggleOverlay()
     {

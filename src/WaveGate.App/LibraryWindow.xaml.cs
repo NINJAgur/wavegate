@@ -28,9 +28,13 @@ public partial class LibraryWindow : Window
     /// <summary>Set by App before exiting; otherwise closing only hides the window.</summary>
     public bool AllowClose { get; set; }
 
+    /// <summary>Raised when the user closes the library; App brings the overlay back.</summary>
+    public event Action? HiddenByUser;
+
     public LibraryWindow(IBoard board)
     {
         InitializeComponent();
+        WindowTheme.ApplyDark(this);
         _board = board;
 
         _view = new ListCollectionView(board.Clips) { Filter = Matches };
@@ -64,6 +68,7 @@ public partial class LibraryWindow : Window
         {
             e.Cancel = true;
             Hide();
+            HiddenByUser?.Invoke();
         }
         base.OnClosing(e);
     }
@@ -91,7 +96,9 @@ public partial class LibraryWindow : Window
         _view.Refresh();
         ViewTitle.Text = _selected.Label;
 
-        EmptyHint.Text = _board.Clips.Count == 0
+        int shown = _view.Count;
+        ViewSubtitle.Text = shown == 1 ? "1 sound" : $"{shown} sounds";
+        EmptyText.Text = _board.Clips.Count == 0
             ? "Drop audio or video files here, or use Add sounds.\nMP3, WAV, OGG, MP4 and M4A work; for video only the sound is used."
             : SearchBox.Text.Trim().Length > 0 ? "No sounds match your search."
             : _selected.Kind == NodeKind.Favorites ? "No favorites yet. Click the ☆ on a sound to add it here and to the overlay."
@@ -383,7 +390,10 @@ public partial class LibraryWindow : Window
     private sealed record SidebarNode(NodeKind Kind, string Label, string? Category, int Count)
     {
         public static readonly SidebarNode All = new(NodeKind.All, "All sounds", null, 0);
-        public static readonly SidebarNode Favorites = new(NodeKind.Favorites, "★ Favorites", null, 0);
+        public static readonly SidebarNode Favorites = new(NodeKind.Favorites, "Favorites", null, 0);
+
+        // Segoe Fluent Icons: music note, star, folder.
+        public string Icon => Kind switch { NodeKind.All => "", NodeKind.Favorites => "", _ => "" };
 
         public bool SameAs(SidebarNode other) =>
             Kind == other.Kind && string.Equals(Category, other.Category, StringComparison.OrdinalIgnoreCase);

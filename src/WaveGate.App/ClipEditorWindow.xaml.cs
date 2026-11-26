@@ -18,6 +18,7 @@ public partial class ClipEditorWindow : Window
                             Action<PlayOptions> preview, Action stopPreview, Action setHotkey, Action clearHotkey)
     {
         InitializeComponent();
+        WindowTheme.ApplyDark(this);
         _clip = clip;
         _preview = preview;
         _stopPreview = stopPreview;
