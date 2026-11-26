@@ -1,0 +1,29 @@
+# Build output
+bin/
+obj/
+out/
+x64/
+Debug/
+Release/
+*.user
+
+# Visual Studio
+.vs/
+*.suo
+*.VC.db
+*.VC.opendb
+*.ipch
+*.aps
+
+# C++ intermediates
+*.obj
+*.pdb
+*.ilk
+*.exp
+*.iobj
+*.ipdb
+*.tlog
+
+# NuGet
+*.nupkg
+packages/
