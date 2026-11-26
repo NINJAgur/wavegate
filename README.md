@@ -65,7 +65,12 @@ clip files ─► Voice (decode → float → mixer rate → stereo) ─► Mixi
 
 ## Build
 
-- **APO:** needs Visual Studio 2022 with the "Desktop development with C++" workload and a Windows 11 SDK (`APOInitSystemEffects3`). It links the same libraries as Microsoft's SysVAD SwapAPO sample (`AudioBaseProcessingObjectV140.lib`, `audiomediatypecrt.lib`, `AudioEng.lib`). If `BaseAudioProcessingObject.h` reports missing ATL types, add the "C++ ATL" component.
+- **APO:** needs Visual Studio 2022 with the "Desktop development with C++" workload, the "C++ ATL" component and a Windows SDK (built and verified with 10.0.22621). It links the same libraries as Microsoft's SysVAD SwapAPO sample (`AudioBaseProcessingObjectV140.lib`, `audiomediatypecrt.lib`, `AudioEng.lib`). The static CRT is used, so the DLL depends only on system DLLs.
+
+```powershell
+& "C:\Program Files\Microsoft Visual Studio\2022\Community\MSBuild\Current\Bin\MSBuild.exe" `
+    src\WaveGate.Apo\WaveGate.Apo.vcxproj /p:Configuration=Release /p:Platform=x64
+```
 - **C#:** needs the .NET 8 SDK. The overlay expects `WaveGate.Installer.exe` and `WaveGateApo.dll` in its own folder, so build everything into one output folder:
 
 ```powershell
@@ -97,4 +102,4 @@ WaveGate.Installer unregister "C:\Program Files\WaveGate\WaveGateApo.dll"
 - The shared ring grants read/write to Interactive Users. This means any local process in your session could inject audio into the mic while WaveGate is attached.
 - The sidetone stream is rebuilt after mic setup, but not when the default headphone device changes or is unplugged. Restart WaveGate in that case.
 - The tray uses a stock Windows icon until the project gets its own `.ico`.
-- Nothing has been compiled or run yet. The build machine had neither the .NET SDK nor the Windows SDK headers.
+- All four projects build cleanly, and the overlay launches. The APO has not yet been registered or loaded by audiodg, and nothing has been tested end to end.

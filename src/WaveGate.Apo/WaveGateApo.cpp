@@ -7,6 +7,8 @@
 std::atomic<LONG> g_objectCount{ 0 };
 
 // AVRT_DATA keeps this in a section that is safe to touch from the RT thread.
+// C4815: CRegAPOProperties<1> has a zero-length "extra interfaces" array by design.
+#pragma warning(suppress: 4815)
 const AVRT_DATA CRegAPOProperties<1> CWaveGateApo::sm_RegProperties(
     CLSID_WaveGateApo,
     L"WaveGate Mic Injector",
@@ -80,13 +82,9 @@ STDMETHODIMP CWaveGateApo::Initialize(UINT32 cbDataSize, BYTE* pbyData)
 {
     if ((pbyData == nullptr) != (cbDataSize == 0)) return E_INVALIDARG;
 
-    // We need nothing from the init structs; just accept every known shape.
-    if (cbDataSize == sizeof(APOInitSystemEffects3) ||
-        cbDataSize == sizeof(APOInitSystemEffects2) ||
-        cbDataSize == sizeof(APOInitSystemEffects))
-        return S_OK;
-
-    return E_INVALIDARG;
+    // We read nothing from the init structs. APOInitSystemEffects, 2 and 3 all extend the
+    // first one, so a size check keeps us compatible with newer engines and older SDKs.
+    return cbDataSize >= sizeof(APOInitSystemEffects) ? S_OK : E_INVALIDARG;
 }
 
 // ---- IAudioProcessingObjectConfiguration -----------------------------------
