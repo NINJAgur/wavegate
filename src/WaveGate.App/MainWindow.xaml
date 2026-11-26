@@ -114,7 +114,13 @@
                                                        Width="{Binding TextWidth, RelativeSource={RelativeSource AncestorType=Window}}"
                                                        FontWeight="SemiBold" FontSize="14" />
                                         </Viewbox>
-                                        <Border Height="2" VerticalAlignment="Bottom" RenderTransformOrigin="0,0.5"
+                                        <Border x:Name="PauseBadge" Width="20" Height="20" CornerRadius="10" Visibility="Collapsed"
+                                                HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,4,4,0"
+                                                Background="{Binding Name, Converter={StaticResource ClipColor}}">
+                                            <TextBlock Text="&#xE769;" Style="{StaticResource Glyph}" FontSize="10" Foreground="#0F0F15"
+                                                       HorizontalAlignment="Center" />
+                                        </Border>
+                                        <Border x:Name="ProgressFill" Height="2" VerticalAlignment="Bottom" RenderTransformOrigin="0,0.5"
                                                 Background="{Binding Name, Converter={StaticResource ClipColor}}">
                                             <Border.RenderTransform>
                                                 <ScaleTransform ScaleX="{Binding Progress}" />
@@ -122,6 +128,12 @@
                                         </Border>
                                     </Grid>
                                 </Button>
+                                <DataTemplate.Triggers>
+                                    <DataTrigger Binding="{Binding Paused}" Value="True">
+                                        <Setter TargetName="PauseBadge" Property="Visibility" Value="Visible" />
+                                        <Setter TargetName="ProgressFill" Property="Opacity" Value="0.5" />
+                                    </DataTrigger>
+                                </DataTemplate.Triggers>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>

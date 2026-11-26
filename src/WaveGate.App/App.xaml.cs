@@ -1,4 +1,4 @@
-﻿using System.Collections.ObjectModel;
+using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
 using System.Windows;
@@ -27,6 +27,9 @@ public partial class App : Application, IBoard
     private DispatcherTimer? _saveTimer;
     private HashSet<Guid> _playing = [];
     private bool _setupRunning;
+    private DefaultOutputWatcher? _outputWatcher;
+    private DispatcherTimer? _outputChangedTimer;
+    private bool _followingOutput;
 
     public ObservableCollection<ClipEntry> Clips { get; } = [];
     public ObservableCollection<string> Categories { get; } = [];
@@ -322,8 +325,10 @@ public partial class App : Application, IBoard
 
         foreach (var clip in Clips)
         {
+            bool playing = progress.TryGetValue(clip.Id, out var p);
+            clip.Paused = playing && _engine!.IsPaused(clip.Id);
             if (clip.Scrubbing) continue;
-            if (progress.TryGetValue(clip.Id, out var p)) clip.Progress = p;
+            if (playing) clip.Progress = p;
             else if (_playing.Contains(clip.Id)) clip.Progress = 0;
         }
         _playing = [.. progress.Keys];
@@ -340,6 +345,36 @@ public partial class App : Application, IBoard
         {
             error = ex.Message;
             return null;
+        }
+    }
+
+    /// <summary>The sidetone stream is bound to one device, so follow Windows when the default output changes.</summary>
+    private void WatchDefaultOutput()
+    {
+        // Switching devices can fire several notifications in a row; rebuild once things settle.
+        _outputChangedTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(400) };
+        _outputChangedTimer.Tick += async (_, _) =>
+        {
+            _outputChangedTimer.Stop();
+            // Setup rebuilds the engine itself after its own audio restart.
+            if (_setupRunning || _followingOutput) return;
+            _followingOutput = true;
+            try { await RestartEngineAsync(); }
+            finally { _followingOutput = false; }
+        };
+
+        try
+        {
+            _outputWatcher = new DefaultOutputWatcher();
+            _outputWatcher.Changed += () => Dispatcher.BeginInvoke(() =>
+            {
+                _outputChangedTimer.Stop();
+                _outputChangedTimer.Start();
+            });
+        }
+        catch (Exception ex) // COM failure while the audio service is down; the app still works without it
+        {
+            _tray?.Notify("Won't follow output device changes", ex.Message, isError: true);
         }
     }
 
@@ -465,7 +500,7 @@ public partial class App : Application, IBoard
 
     private void OnClipChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName != nameof(ClipEntry.Progress)) ScheduleSave();
+        if (e.PropertyName is not (nameof(ClipEntry.Progress) or nameof(ClipEntry.Paused))) ScheduleSave();
     }
 
     // ---- Hotkeys -----------------------------------------------------------

@@ -57,6 +57,7 @@ public sealed class ClipEntry : INotifyPropertyChanged
     private double _trimStart;
     private double? _trimEnd;
     private double _progress;
+    private bool _paused;
 
     public Guid Id { get; set; } = Guid.NewGuid();
 
@@ -84,6 +85,10 @@ public sealed class ClipEntry : INotifyPropertyChanged
     /// <summary>Playback position 0..1 for the tile's progress bar; not saved.</summary>
     [JsonIgnore]
     public double Progress { get => _progress; set => Set(ref _progress, value); }
+
+    /// <summary>Playing but paused, for the tile's paused look; not saved.</summary>
+    [JsonIgnore]
+    public bool Paused { get => _paused; set => Set(ref _paused, value); }
 
     /// <summary>True while the user drags the seek bar, so playback updates don't fight the drag.</summary>
     [JsonIgnore]
