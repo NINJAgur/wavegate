@@ -51,7 +51,8 @@ public partial class LibraryWindow : Window
         SidetoneSlider.Value = board.SidetoneVolume;
         MicVolumeText.Text = $"{board.MicVolume:P0}";
         SidetoneText.Text = $"{board.SidetoneVolume:P0}";
-        FillShareBox([]);
+        board.SharingChanged += UpdateShareButton;
+        UpdateShareButton();
 
         RebuildSidebar();
         RefreshView();
@@ -256,7 +257,7 @@ public partial class LibraryWindow : Window
 
     private void OnClipClick(object sender, RoutedEventArgs e)
     {
-        if (ClipOf(sender) is { } clip) _board.Play(clip);
+        if (ClipOf(sender) is { } clip) _board.Press(clip);
     }
 
     private void OnStarClick(object sender, RoutedEventArgs e)
@@ -412,19 +413,23 @@ public partial class LibraryWindow : Window
             mics = [];
         }
 
-        if (_board.MicDeviceId is { } attached)
-        {
-            var name = mics.FirstOrDefault(m => m.Id == attached)?.Name ?? "a disconnected microphone";
-            menu.Items.Add(new MenuItem { Header = $"Attached to {name}", IsEnabled = false, IsChecked = true });
-            menu.Items.Add(MenuItem("Detach (restores original settings)", _board.DetachMic));
-        }
-        else if (mics.Count == 0)
-        {
+        var attached = _board.MicDeviceId;
+        menu.Items.Add(new MenuItem { Header = "Send clips into this mic", IsEnabled = false });
+        if (mics.Count == 0)
             menu.Items.Add(new MenuItem { Header = "No active microphones", IsEnabled = false });
-        }
-        else
+        if (attached is not null && mics.All(m => m.Id != attached))
+            menu.Items.Add(new MenuItem { Header = "A disconnected microphone", IsChecked = true, IsEnabled = false });
+        foreach (var mic in mics)
         {
-            foreach (var mic in mics) menu.Items.Add(MenuItem($"Attach to {mic.Name}", () => _board.AttachMic(mic.Id)));
+            var item = MenuItem(mic.Name, () => _board.AttachMic(mic.Id));
+            item.IsChecked = mic.Id == attached;
+            if (item.IsChecked) item.IsEnabled = false;
+            menu.Items.Add(item);
+        }
+        if (attached is not null)
+        {
+            menu.Items.Add(new Separator());
+            menu.Items.Add(MenuItem("Detach (restores original settings)", _board.DetachMic));
         }
 
         menu.Items.Add(new Separator());
@@ -437,28 +442,24 @@ public partial class LibraryWindow : Window
 
     // ---- App audio sharing --------------------------------------------------
 
-    private static readonly WaveGate.Audio.AudioApp NotSharing = new(0, "Share app audio: off");
-    private bool _fillingShareBox;
-
-    private void FillShareBox(IEnumerable<WaveGate.Audio.AudioApp> apps)
+    private void OnShareToggleClick(object sender, RoutedEventArgs e)
     {
-        _fillingShareBox = true;
-        var shared = _board.SharedApp;
-        var items = new List<WaveGate.Audio.AudioApp> { NotSharing };
-        items.AddRange(apps.Where(a => a.ProcessId != shared?.ProcessId));
-        if (shared is not null) items.Insert(1, shared);
-        ShareBox.ItemsSource = items;
-        ShareBox.SelectedItem = shared ?? NotSharing;
-        _fillingShareBox = false;
+        if (_board.ShareSource is null) ShareMenu.Open(_board, ShareDrop); // nothing chosen yet: ask first
+        else _board.Sharing = !_board.Sharing;
     }
 
-    private void OnShareDropDownOpened(object? sender, EventArgs e) => FillShareBox(_board.AudioApps());
+    private void OnShareDropClick(object sender, RoutedEventArgs e) => ShareMenu.Open(_board, ShareDrop);
 
-    private void OnShareChanged(object sender, SelectionChangedEventArgs e)
+    private void UpdateShareButton()
     {
-        if (_fillingShareBox || ShareBox.SelectedItem is not WaveGate.Audio.AudioApp app) return;
-        _board.SharedApp = app == NotSharing ? null : app;
-        if (_board.SharedApp is null && app != NotSharing) FillShareBox([]); // sharing failed; show it as off
+        var on = _board.Sharing;
+        var style = (Style)FindResource(on ? "AccentButton" : "WgButton");
+        ShareToggle.Style = style;
+        ShareDrop.Style = style;
+        ShareLabel.Text = on ? $"Sharing {_board.ShareSource}" : "Share audio";
+        ShareToggle.ToolTip = _board.ShareSource is { } source
+            ? on ? $"Others hear {source} through your mic. Click to stop." : $"Click to send {source} into your mic"
+            : "Send what an app is playing (a YouTube tab, a clip on X…) into your mic";
     }
 
     // ---- Volumes -----------------------------------------------------------

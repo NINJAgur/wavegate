@@ -38,6 +38,8 @@ public partial class MainWindow : Window
 
         foreach (var clip in board.Clips) clip.PropertyChanged += OnClipChanged;
         board.Clips.CollectionChanged += OnClipsChanged;
+        board.SharingChanged += UpdateShareButton;
+        UpdateShareButton();
         Refresh();
     }
 
@@ -119,7 +121,7 @@ public partial class MainWindow : Window
 
     private void OnClipClick(object sender, RoutedEventArgs e)
     {
-        if (ClipOf(sender) is { } clip) _board.Play(clip);
+        if (ClipOf(sender) is { } clip) _board.Press(clip);
     }
 
     private void OnEditClick(object sender, RoutedEventArgs e)
@@ -143,6 +145,27 @@ public partial class MainWindow : Window
     }
 
     private void OnLibraryClick(object sender, RoutedEventArgs e) => _board.ShowLibrary();
+
+    private void OnShareClick(object sender, RoutedEventArgs e)
+    {
+        if (_board.ShareSource is null) ShareMenu.Open(_board, ShareButton);
+        else _board.Sharing = !_board.Sharing;
+    }
+
+    private void OnShareRightClick(object sender, MouseButtonEventArgs e)
+    {
+        e.Handled = true; // not the header's overlay-source menu
+        ShareMenu.Open(_board, ShareButton);
+    }
+
+    private void UpdateShareButton()
+    {
+        ShareButton.Foreground = _board.Sharing ? (Brush)FindResource("AccentBrush") : (Brush)FindResource("MutedBrush");
+        ShareButton.ToolTip = _board.ShareSource is { } source
+            ? _board.Sharing ? $"Sharing {source} into your mic. Click to stop, right-click to change."
+                             : $"Click to send {source} into your mic. Right-click to change."
+            : "Send an app's audio into your mic";
+    }
 
     private void OnStopAllClick(object sender, RoutedEventArgs e) => _board.StopAll();
 

@@ -22,6 +22,9 @@ public sealed class BoardConfig
     /// <summary>What the overlay shows: null = Favorites, "" = all clips, otherwise a category name.</summary>
     public string? OverlaySource { get; set; }
 
+    /// <summary>App whose audio the share button sends into the mic, by display name.</summary>
+    public string? ShareSource { get; set; }
+
     public double? Left { get; set; }
     public double? Top { get; set; }
 }

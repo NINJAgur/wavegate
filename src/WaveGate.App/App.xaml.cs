@@ -124,68 +124,68 @@ public partial class App : Application, IBoard
 
     // ---- Playback ----------------------------------------------------------
 
+    /// <summary>Hotkeys and the "Play" menu item: a paused clip resumes, a playing one follows its retrigger setting.</summary>
     public void Play(ClipEntry clip)
     {
-        if (_engine is null)
+        if (!EnsureEngine(out var engine)) return;
+
+        if (engine.IsPaused(clip.Id))
         {
-            Notify("Headphone output unavailable", "Restart WaveGate after connecting an output device.", isError: true);
+            engine.SetPaused(clip.Id, false);
             return;
         }
 
-        if (_engine.IsPaused(clip.Id))
-        {
-            _pendingRetrigger = null;
-            _engine.SetPaused(clip.Id, false);
-            return;
-        }
-
-        if (_engine.IsPlaying(clip.Id))
-        {
-            // A second press within the double-click time pauses; otherwise the retrigger runs once it expires.
-            if (_pendingRetrigger == clip)
-            {
-                _pendingRetrigger = null;
-                _engine.SetPaused(clip.Id, true);
-                return;
-            }
-            if (_pendingRetrigger is { } other) Retrigger(other);
-            _pendingRetrigger = clip;
-            _retriggerTimer ??= new DispatcherTimer(TimeSpan.FromMilliseconds(System.Windows.Forms.SystemInformation.DoubleClickTime),
-                DispatcherPriority.Normal, (_, _) =>
-                {
-                    _retriggerTimer!.Stop();
-                    if (_pendingRetrigger is { } pending) Retrigger(pending);
-                }, Dispatcher);
-            _retriggerTimer.Stop();
-            _retriggerTimer.Start();
-            return;
-        }
-
-        StartVoice(clip, new PlayOptions(clip.Volume, clip.TrimStart, clip.TrimEnd));
-    }
-
-    private ClipEntry? _pendingRetrigger;
-    private DispatcherTimer? _retriggerTimer;
-
-    private void Retrigger(ClipEntry clip)
-    {
-        _pendingRetrigger = null;
-        if (_engine is null) return;
-
-        if (_engine.IsPlaying(clip.Id))
+        if (engine.IsPlaying(clip.Id))
         {
             switch (clip.Retrigger)
             {
                 case RetriggerMode.Stop:
-                    _engine.Stop(clip.Id);
+                    engine.Stop(clip.Id);
                     return;
                 case RetriggerMode.Restart:
-                    _engine.Stop(clip.Id);
+                    engine.Stop(clip.Id);
                     break;
             }
         }
 
         StartVoice(clip, new PlayOptions(clip.Volume, clip.TrimStart, clip.TrimEnd));
+    }
+
+    private ClipEntry? _lastPress;
+    private long _lastPressAt;
+
+    /// <summary>Clicking a tile: play, or pause/resume if it's already going. A double-click restarts it.</summary>
+    public void Press(ClipEntry clip)
+    {
+        if (!EnsureEngine(out var engine)) return;
+
+        long now = Environment.TickCount64;
+        bool isDouble = _lastPress == clip && now - _lastPressAt <= System.Windows.Forms.SystemInformation.DoubleClickTime;
+        _lastPress = isDouble ? null : clip; // a third click starts a fresh sequence
+        _lastPressAt = now;
+
+        if (isDouble)
+        {
+            // The first click of the pair already paused (or started) it; the second restarts from the top.
+            engine.Stop(clip.Id);
+            StartVoice(clip, new PlayOptions(clip.Volume, clip.TrimStart, clip.TrimEnd));
+        }
+        else if (engine.IsPlaying(clip.Id))
+        {
+            engine.SetPaused(clip.Id, !engine.IsPaused(clip.Id));
+        }
+        else
+        {
+            StartVoice(clip, new PlayOptions(clip.Volume, clip.TrimStart, clip.TrimEnd));
+        }
+    }
+
+    private bool EnsureEngine(out SoundEngine engine)
+    {
+        engine = _engine!;
+        if (_engine is not null) return true;
+        Notify("Headphone output unavailable", "Restart WaveGate after connecting an output device.", isError: true);
+        return false;
     }
 
     public void Seek(ClipEntry clip, double fraction)
@@ -237,31 +237,61 @@ public partial class App : Application, IBoard
         }
     }
 
-    private AudioApp? _sharedApp;
+    public event Action? SharingChanged;
 
-    public AudioApp? SharedApp
+    public string? ShareSource
     {
-        get => _sharedApp;
+        get => _config.ShareSource;
         set
         {
-            _sharedApp = value;
-            try
-            {
-                _engine?.ShareAppAudio(value?.ProcessId);
-            }
-            catch (Exception ex) // needs Windows 10 2004+; the app may also have just closed
-            {
-                _sharedApp = null;
-                Notify($"Couldn't share audio from {value?.Name}", ex.Message, isError: true);
-            }
+            _config.ShareSource = value;
+            ScheduleSave();
+            Sharing = value is not null; // picking a source starts sharing it
         }
     }
 
-    public void StopAll()
+    private bool _sharing;
+
+    public bool Sharing
     {
-        _pendingRetrigger = null;
-        _engine?.StopAll();
+        get => _sharing;
+        set
+        {
+            _sharing = value && StartSharing();
+            if (!_sharing) _engine?.ShareAppAudio(null);
+            SharingChanged?.Invoke();
+        }
     }
+
+    private bool StartSharing()
+    {
+        if (_engine is null) return false;
+        if (ShareSource is not { } name)
+        {
+            Notify("Choose what to share", "Use the arrow next to the share button to pick an app.");
+            return false;
+        }
+
+        // Processes come and go, so the source is remembered by name and resolved each time.
+        if (AudioApps().FirstOrDefault(a => string.Equals(a.Name, name, StringComparison.OrdinalIgnoreCase)) is not { } app)
+        {
+            Notify($"{name} isn't playing audio", "Start something in it, then press the share button again.");
+            return false;
+        }
+
+        try
+        {
+            _engine.ShareAppAudio(app.ProcessId);
+            return true;
+        }
+        catch (Exception ex) // needs Windows 10 2004+; the app may also have just closed
+        {
+            Notify($"Couldn't share audio from {name}", ex.Message, isError: true);
+            return false;
+        }
+    }
+
+    public void StopAll() => _engine?.StopAll();
 
     public float MicVolume
     {
@@ -326,7 +356,7 @@ public partial class App : Application, IBoard
             _engine = TryCreateEngine(out error);
         }
         if (_engine is null) Notify("Headphone output unavailable", error ?? "", isError: true);
-        else if (_sharedApp is { } app) SharedApp = app;
+        else if (_sharing) Sharing = true;
     }
 
     // ---- Board -------------------------------------------------------------
@@ -511,7 +541,13 @@ public partial class App : Application, IBoard
         _setupRunning = true;
         try
         {
-            var result = await MicSetup.InstallAsync(deviceId, replaceVendorEffect: false);
+            // Already on another mic: move it over instead of attaching a second one.
+            var current = _config.MicDeviceId;
+            Task<SetupResult> Run(bool replace) => current is not null && current != deviceId
+                ? MicSetup.SwitchAsync(current, deviceId, replace)
+                : MicSetup.InstallAsync(deviceId, replace);
+
+            var result = await Run(replace: false);
             if (result.Outcome == SetupOutcome.SlotOccupied)
             {
                 var answer = MessageBox.Show(
@@ -520,7 +556,7 @@ public partial class App : Application, IBoard
                     "Replace it while WaveGate is attached? Detaching restores it.",
                     "WaveGate", MessageBoxButton.YesNo, MessageBoxImage.Warning);
                 if (answer != MessageBoxResult.Yes) return;
-                result = await MicSetup.InstallAsync(deviceId, replaceVendorEffect: true);
+                result = await Run(replace: true);
             }
 
             if (result.Outcome == SetupOutcome.Ok) _config.MicDeviceId = deviceId;

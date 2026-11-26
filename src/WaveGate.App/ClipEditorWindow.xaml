@@ -26,7 +26,7 @@
                     ValueChanged="OnVolumeChanged" ToolTip="100% = the file's own level" />
         </DockPanel>
 
-        <TextBlock Style="{StaticResource Label}" Text="When pressed while already playing" />
+        <TextBlock Style="{StaticResource Label}" Text="When its hotkey is pressed while playing (clicks pause; double-click restarts)" />
         <ComboBox x:Name="RetriggerBox">
             <ComboBoxItem Content="Restart it from the beginning" />
             <ComboBoxItem Content="Play another copy over it" />

@@ -67,6 +67,14 @@ public static class MicSetup
         return RunElevatedAsync(args);
     }
 
+    /// <summary>Moves the APO from one mic to another in a single elevated run and audio restart.</summary>
+    public static Task<SetupResult> SwitchAsync(string fromId, string toId, bool replaceVendorEffect)
+    {
+        var args = new List<string> { "switch", fromId, toId };
+        if (replaceVendorEffect) args.Add("--replace");
+        return RunElevatedAsync(args);
+    }
+
     public static Task<SetupResult> UninstallAsync(string deviceId) =>
         RunElevatedAsync(["uninstall", deviceId]);
 

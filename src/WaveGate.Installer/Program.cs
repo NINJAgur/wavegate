@@ -47,6 +47,14 @@ try
             Console.WriteLine("Detached. Original settings restored, audio service restarted.");
             return Ok;
 
+        case "switch" when args.Length >= 3:
+            // New mic first: if its slot is taken nothing has changed yet, and the old mic keeps working.
+            ApoAttachment.Attach(args[2], replaceExisting: args.Contains("--replace"));
+            ApoAttachment.Detach(args[1]);
+            AudioService.Restart();
+            Console.WriteLine("Moved to the new microphone. Audio service restarted.");
+            return Ok;
+
         case "install" when args.Length >= 3:
             CopyApo(args[1], installedApo);
             if (RunRegsvr32(installedApo, unregister: false) != Ok)
@@ -134,6 +142,6 @@ static int RunRegsvr32(string dllPath, bool unregister)
 static int PrintUsage()
 {
     Console.Error.WriteLine("usage: WaveGate.Installer list | register <dll> | unregister <dll> | attach <id> [--replace] | " +
-                            "detach <id> | install <dll> <id> [--replace] | uninstall <id>");
+                            "detach <id> | switch <old id> <new id> [--replace] | install <dll> <id> [--replace] | uninstall <id>");
     return Usage;
 }

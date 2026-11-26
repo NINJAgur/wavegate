@@ -67,6 +67,8 @@
                     <ContextMenu />
                 </DockPanel.ContextMenu>
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                    <Button x:Name="ShareButton" Style="{StaticResource IconButton}" Content="&#xE720;" FontSize="14"
+                            Click="OnShareClick" MouseRightButtonUp="OnShareRightClick" />
                     <Button Style="{StaticResource IconButton}" Content="&#xE8F1;" FontSize="14" ToolTip="Open the library"
                             Click="OnLibraryClick" />
                     <Button Style="{StaticResource IconButton}" Content="&#xE71A;" FontSize="14" ToolTip="Stop all"

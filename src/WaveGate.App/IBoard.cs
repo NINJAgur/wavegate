@@ -18,12 +18,17 @@ public interface IBoard
     string? OverlaySource { get; set; }
 
     void Play(ClipEntry clip);
+    /// <summary>A click on a tile: play, pause/resume, or restart on double-click.</summary>
+    void Press(ClipEntry clip);
     /// <summary>Jumps a playing clip to <paramref name="fraction"/> of its length, or starts it there.</summary>
     void Seek(ClipEntry clip, double fraction);
     /// <summary>Apps that currently have an audio session on the default output.</summary>
     IReadOnlyList<AudioApp> AudioApps();
-    /// <summary>Streams one app's audio into the mic (others hear it; you already do). Null stops.</summary>
-    AudioApp? SharedApp { get; set; }
+    /// <summary>Name of the app the share button sends into the mic; remembered between runs.</summary>
+    string? ShareSource { get; set; }
+    /// <summary>While on, the share source's audio goes into the mic (others hear it; you already do).</summary>
+    bool Sharing { get; set; }
+    event Action? SharingChanged;
     /// <summary>The microphone WaveGate is attached to, if any.</summary>
     string? MicDeviceId { get; }
     void AttachMic(string deviceId);
