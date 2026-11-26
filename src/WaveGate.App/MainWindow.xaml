@@ -5,7 +5,7 @@
         WindowStyle="None" AllowsTransparency="True" Background="Transparent"
         ResizeMode="NoResize" Topmost="True" ShowInTaskbar="False"
         AllowDrop="True" DragOver="OnDragOver" Drop="OnDrop"
-        FontFamily="{StaticResource UiFont}" FontSize="11" Foreground="{StaticResource TextBrush}">
+        FontFamily="{StaticResource UiFont}" FontSize="13" Foreground="{StaticResource TextBrush}">
 
     <Window.Resources>
         <Style x:Key="ClipButton" TargetType="Button">
@@ -57,7 +57,7 @@
         </Style>
     </Window.Resources>
 
-    <Border CornerRadius="12" Background="#F20F0F15" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" Padding="6">
+    <Border CornerRadius="12" Background="#F20F0F15" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" Padding="8">
         <DockPanel>
             <!-- Header doubles as the drag handle; right-click picks what the overlay shows. -->
             <DockPanel DockPanel.Dock="Top" Margin="2,0,0,4" Background="Transparent" LastChildFill="True"
@@ -67,11 +67,11 @@
                     <ContextMenu />
                 </DockPanel.ContextMenu>
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
-                    <Button Style="{StaticResource IconButton}" Content="&#xE8F1;" FontSize="12" ToolTip="Open the library"
+                    <Button Style="{StaticResource IconButton}" Content="&#xE8F1;" FontSize="14" ToolTip="Open the library"
                             Click="OnLibraryClick" />
-                    <Button Style="{StaticResource IconButton}" Content="&#xE71A;" FontSize="12" ToolTip="Stop all"
+                    <Button Style="{StaticResource IconButton}" Content="&#xE71A;" FontSize="14" ToolTip="Stop all"
                             Foreground="#FF8A8D" Click="OnStopAllClick" />
-                    <Button Style="{StaticResource IconButton}" Content="&#xE8BB;" FontSize="9" ToolTip="Quit WaveGate"
+                    <Button Style="{StaticResource IconButton}" Content="&#xE8BB;" FontSize="11" ToolTip="Quit WaveGate"
                             Click="OnExitClick" />
                 </StackPanel>
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
@@ -110,7 +110,7 @@
                                         <Viewbox StretchDirection="DownOnly" Margin="7,4,4,4">
                                             <TextBlock Text="{Binding Name}" TextWrapping="Wrap" TextAlignment="Center"
                                                        Width="{Binding TextWidth, RelativeSource={RelativeSource AncestorType=Window}}"
-                                                       FontWeight="SemiBold" FontSize="12" />
+                                                       FontWeight="SemiBold" FontSize="14" />
                                         </Viewbox>
                                         <Border Height="2" VerticalAlignment="Bottom" RenderTransformOrigin="0,0.5"
                                                 Background="{Binding Name, Converter={StaticResource ClipColor}}">

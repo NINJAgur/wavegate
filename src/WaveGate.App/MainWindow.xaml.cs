@@ -177,7 +177,7 @@ public partial class MainWindow : Window
 
     private const int VisibleClips = 4;
     private const double TileMargin = 4; // 2 on each side
-    private static readonly Size PortraitTile = new(92, 100), LandscapeTile = new(104, 56);
+    private static readonly Size PortraitTile = new(112, 124), LandscapeTile = new(132, 70);
     private Edge _edge = Edge.Right;
 
     public static readonly DependencyProperty TileWidthProperty = DependencyProperty.Register(
@@ -189,7 +189,7 @@ public partial class MainWindow : Window
         new PropertyMetadata(PortraitTile.Height, (d, _) => ((MainWindow)d).OnTileSizeChanged()));
 
     public static readonly DependencyProperty TextWidthProperty = DependencyProperty.Register(
-        nameof(TextWidth), typeof(double), typeof(MainWindow), new PropertyMetadata(PortraitTile.Width - 12));
+        nameof(TextWidth), typeof(double), typeof(MainWindow), new PropertyMetadata(PortraitTile.Width - 16));
 
     public double TileWidth { get => (double)GetValue(TileWidthProperty); set => SetValue(TileWidthProperty, value); }
     public double TileHeight { get => (double)GetValue(TileHeightProperty); set => SetValue(TileHeightProperty, value); }
@@ -199,7 +199,7 @@ public partial class MainWindow : Window
 
     private void OnTileSizeChanged()
     {
-        TextWidth = TileWidth - 12;
+        TextWidth = TileWidth - 16;
         Scroller.MaxHeight = Vertical ? VisibleClips * (TileHeight + TileMargin) : double.PositiveInfinity;
         Scroller.MaxWidth = Vertical ? double.PositiveInfinity : VisibleClips * (TileWidth + TileMargin);
     }
