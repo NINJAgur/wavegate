@@ -38,6 +38,15 @@ public static class ApoAttachment
     private static readonly string BackupDir =
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "WaveGate", "backup");
 
+    /// <summary>Mics whose backup has not been restored yet, i.e. the ones WaveGate is still attached to.</summary>
+    public static IReadOnlyList<string> AttachedDeviceIds() =>
+        Directory.Exists(BackupDir)
+            ? Directory.GetFiles(BackupDir, "*.json")
+                .Where(f => !Path.GetFileName(f).Contains(".restored-"))
+                .Select(f => JsonSerializer.Deserialize<Backup>(File.ReadAllText(f), JsonOptions)?.DeviceId)
+                .OfType<string>()
+                .ToList()
+            : [];
     public static IReadOnlyList<CaptureDevice> ListCaptureDevices()
     {
         using var enumerator = new MMDeviceEnumerator();

@@ -12,6 +12,7 @@ using WaveGate.Installer;
 //   detach     <capture-device-id>
 //   install    <path\to\WaveGateApo.dll> <capture-device-id> [--replace]   (copy + register + attach)
 //   uninstall  <capture-device-id>                                        (detach + unregister)
+//   uninstall-all                                                        (detach every mic + unregister; used by the app uninstaller)
 
 const int Ok = 0, Failed = 1, Usage = 2, SlotOccupied = 3;
 
@@ -72,6 +73,14 @@ try
             Console.WriteLine("Detached and unregistered. Audio service restarted.");
             return Ok;
 
+        case "uninstall-all":
+            // Run by the app's uninstaller: a mic left pointing at a deleted DLL would lose its effects chain.
+            var attached = ApoAttachment.AttachedDeviceIds();
+            foreach (var id in attached) ApoAttachment.Detach(id);
+            if (attached.Count > 0) AudioService.Restart();
+            if (File.Exists(installedApo)) RunRegsvr32(installedApo, unregister: true);
+            Console.WriteLine($"Detached from {attached.Count} microphone(s) and unregistered.");
+            return Ok;
         default:
             return PrintUsage();
     }
@@ -142,6 +151,6 @@ static int RunRegsvr32(string dllPath, bool unregister)
 static int PrintUsage()
 {
     Console.Error.WriteLine("usage: WaveGate.Installer list | register <dll> | unregister <dll> | attach <id> [--replace] | " +
-                            "detach <id> | switch <old id> <new id> [--replace] | install <dll> <id> [--replace] | uninstall <id>");
+                            "detach <id> | switch <old id> <new id> [--replace] | install <dll> <id> [--replace] | uninstall <id> | uninstall-all");
     return Usage;
 }

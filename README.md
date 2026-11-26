@@ -87,6 +87,7 @@ dotnet build src/WaveGate.App -c Release -o out
 copy src\WaveGate.Apo\x64\Release\WaveGateApo.dll out\
 out\WaveGate.exe
 ```
+- **Setup exe:** `.\build-setup.ps1 -Version 1.0.0` builds the APO, publishes both apps self-contained (no .NET needed on the target PC) and wraps them with [Inno Setup](https://jrsoftware.org/isinfo.php) (`winget install JRSoftware.InnoSetup`) into `dist\WaveGate-Setup-<version>.exe`. It installs to `Program Files\WaveGate`. The uninstaller runs `WaveGate.Installer uninstall-all` first, which detaches every microphone and restores its original settings.
 
 ## Install from the command line (what the tray menu runs)
 
